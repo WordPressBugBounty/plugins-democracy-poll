@@ -3,17 +3,18 @@
 namespace DemocracyPoll\Admin;
 
 use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Poll_Utils;
+use DemPoll;
 use function DemocracyPoll\plugin;
 use function DemocracyPoll\options;
 
 class List_Table_Logs extends \WP_List_Table {
 
-	private static $cache;
+	private static array $cache;
 
-	public $poll_id;
+	public int $poll_id;
 
-	/** @var Admin_Page_Logs */
-	private $logs_page;
+	private Admin_Page_Logs $logs_page;
 
 	public function __construct( Admin_Page_Logs $logs_page ) {
 		$this->logs_page = $logs_page;
@@ -26,23 +27,18 @@ class List_Table_Logs extends \WP_List_Table {
 
 		$this->bulk_action_handler();
 
-		// screen option
 		add_screen_option( 'per_page', [
 			'label'   => 'Показывать на странице',
 			'default' => 20,
 			'option'  => 'dem_logs_per_page',
 		] );
 
-		// the logs of poll
-		$this->poll_id = (int) @ $_GET['poll'];
+		$this->poll_id = (int) ( $_GET['poll'] ?? 0 );
 
 		$this->prepare_items();
 	}
 
-	/**
-	 * @return void
-	 */
-	private function bulk_action_handler() {
+	private function bulk_action_handler(): void {
 
 		$nonce = $_POST['_wpnonce'] ?? '';
 		if( ! $nonce || ! ( $action = $this->current_action() ) ){
@@ -70,62 +66,59 @@ class List_Table_Logs extends \WP_List_Table {
 		}
 	}
 
-	/**
-	 * @return void
-	 */
-	function prepare_items() {
+	public function prepare_items(): void {
 		global $wpdb;
 
 		$per_page = get_user_meta( get_current_user_id(), get_current_screen()->get_option( 'per_page', 'option' ), true ) ?: 20;
 
-		//$this->_column_headers = array( $this->get_columns(), $this->get_hidden_columns(), $this->get_sortable_columns() );
+		$filter = ( $_GET['filter'] ?? '' );
+		$userid = (int) ( $_GET['userid'] ?? 0 );
+		$ip = ( $_GET['ip'] ?? '' );
 
-		// Строим запрос
-		// where --- filters ----
-		$where = 'WHERE 1';
+		// build a query
+
+		$WHERE = 'WHERE 1';
 		if( $this->poll_id ){
-			$where .= ' AND qid = ' . (int) $this->poll_id;
+			$WHERE .=  $wpdb->prepare( ' AND qid = %d', $this->poll_id );
 		}
-		if( $userid = (int) @ $_GET['userid'] ){
-			$where .= ' AND userid = ' . (int) $userid;
+		if( $userid ){
+			$WHERE .=  $wpdb->prepare( ' AND userid = %d', $userid );
 		}
-		if( $ip = @ $_GET['ip'] ){
-			$where .= $wpdb->prepare( ' AND ip = %s', $ip );
+		if( $ip ){
+			$WHERE .= $wpdb->prepare( ' AND ip = %s', $ip );
 		}
 
-		// новые ответы
-		if( @ $_GET['filter'] === 'new_answers' ){
-			// ID new ответов
-			if( $aqids = $wpdb->get_results( "SELECT DISTINCT aid, qid FROM $wpdb->democracy_a WHERE added_by LIKE '%-new'" ) ){
-				$where .= " AND qid IN (" . implode( ',', wp_list_pluck( $aqids, 'qid' ) ) . ") AND ( aids RLIKE '(^|,)(" . implode( '|', wp_list_pluck( $aqids, 'aid' ) ) . ")(,|$)' )";
+		// new answers
+		if( 'new_answers' === $filter ){
+			$aqids = $wpdb->get_results( "SELECT DISTINCT aid, qid FROM $wpdb->democracy_a WHERE added_by LIKE '%-new'" );
+			if( $aqids ){
+				$qid_IN = implode( ',', wp_list_pluck( $aqids, 'qid' ) );
+				$aid_OR = implode( '|', wp_list_pluck( $aqids, 'aid' ) );
+				$WHERE .= " AND qid IN ($qid_IN) AND ( aids RLIKE '(^|,)($aid_OR)(,|$)' )";
 			}
 			else{
-				$where .= ' AND 0 ';
+				$WHERE .= ' AND 0 ';
 			}
 		}
 
-		// пагинация
+		// pagination
 		$this->set_pagination_args( [
-			'total_items' => $wpdb->get_var( "SELECT count(*) FROM $wpdb->democracy_log $where" ),
+			'total_items' => $wpdb->get_var( "SELECT count(*) FROM $wpdb->democracy_log $WHERE" ),
 			'per_page'    => $per_page,
 		] );
-		$cur_page = (int) $this->get_pagenum(); // после set_pagination_args()
+		$cur_page = $this->get_pagenum(); // !!! after set_pagination_args()
 
-		// orderby offset
 		$OFFSET = 'LIMIT ' . ( ( $cur_page - 1 ) * $per_page . ',' . $per_page );
-		$order = ( @ strtolower( $_GET['order'] ) === 'asc' ) ? 'ASC' : 'DESC';
-		$orderby = @ $_GET['orderby'] ?: 'date';
-		$ORDER_BY = $orderby ? sprintf( "ORDER BY %s %s", sanitize_key( $orderby ), $order ) : '';
 
-		// выполняем запрос
-		$sql = "SELECT * FROM $wpdb->democracy_log $where $ORDER_BY $OFFSET";
+		$order = ( strtolower( $_GET['order'] ?? '' ) === 'asc' ) ? 'ASC' : 'DESC';
+		$orderby = sanitize_key( $_GET['orderby'] ?? 'date' );
+		$ORDER_BY = sprintf( "ORDER BY %s %s", $orderby, $order );
+
+		$sql = "SELECT * FROM $wpdb->democracy_log $WHERE $ORDER_BY $OFFSET";
 
 		$this->items = $wpdb->get_results( $sql );
 	}
 
-	/**
-	 * @return array
-	 */
 	public function get_columns(): array {
 
 		$columns = [
@@ -167,21 +160,17 @@ class List_Table_Logs extends \WP_List_Table {
 		];
 	}
 
-	/**
-	 * @return void
-	 */
-	public function table_title() {
-
+	public function table_title(): void {
 		if( $this->poll_id ){
-
 			if( ! $poll = $this->cache( 'polls', $this->poll_id ) ){
-				$poll = $this->cache( 'polls', $this->poll_id, \DemPoll::get_poll_object( $this->poll_id ) );
+				$poll = new DemPoll( $this->poll_id );
+				$this->cache( 'polls', $this->poll_id, $poll );
 			}
 
 			echo sprintf( '<h2><small>%s</small>%s <small><a href="%s">%s</a></small></h2>',
 				__( 'Poll\'s logs: ', 'democracy-poll' ),
 				Kses::kses_html( $poll->question ),
-				plugin()->edit_poll_url( $this->poll_id ),
+				Poll_Utils::edit_poll_url( $this->poll_id ),
 				__( 'Edit poll', 'democracy-poll' )
 			);
 		}
@@ -205,9 +194,16 @@ class List_Table_Logs extends \WP_List_Table {
 		}
 	}
 
-	## если указать $val кэш будет устанавливаться
-	function cache( $type, $key, $val = null ) {
-
+	/**
+	 * If you specify the value, the cache will be set.
+	 *
+	 * @param string     $type The type of cache (e.g., 'polls', 'users', 'answs', 'flagcss').
+	 * @param string|int $key  The key for the cache item.
+	 * @param null|mixed $val  The value to set in the cache. If null, it will just return the cached value.
+	 *
+	 * @return mixed
+	 */
+	private function cache( string $type, $key, $val = null ) {
 		$cache = & self::$cache[ $type ][ $key ];
 
 		if( ! isset( $cache ) && $val !== null ){
@@ -217,11 +213,16 @@ class List_Table_Logs extends \WP_List_Table {
 		return $cache;
 	}
 
-	## Заполнения для колонок
-	function column_default( $log, $col ) {
+	/**
+	 * Fill columns.
+	 *
+	 * @param \stdClass $log     The log object form DB {@see $wpdb->democracy_log} table.
+	 * @param string    $column  The column name.
+	 */
+	function column_default( $log, $column ) {
 		global $wpdb;
 
-		if( 'ip' === $col ){
+		if( 'ip' === $column ){
 			return sprintf( '<a title="%s" href="%s">%s</a>',
 				__( 'Search by IP', 'democracy-poll' ),
 				esc_url( add_query_arg( [ 'ip' => $log->ip, 'poll' => null ] ) ),
@@ -229,8 +230,10 @@ class List_Table_Logs extends \WP_List_Table {
 			);
 		}
 
-		if( 'ip_info' === $col ){
+		if( 'ip_info' === $column ){
 			$country_img = '';
+			$country_name = '';
+			$city = '';
 
 			// обновим данные IP если их нет и прошло больше суток с последней попытки
 			if( $log->ip ){
@@ -241,16 +244,16 @@ class List_Table_Logs extends \WP_List_Table {
 				}
 
 				if( $log->ip_info && ! is_numeric( $log->ip_info ) ){
-					list( $country_name, $county_code, $city ) = explode( ',', $log->ip_info );
+					[ $country_name, $county_code, $city ] = explode( ',', $log->ip_info );
 
 					// css background position
 					if( ! $flagcss = $this->cache( 'flagcss', 'flagcss' ) ){
-						$flagcss = $this->cache( 'flagcss', 'flagcss', file_get_contents( DEMOC_PATH . 'admin/country_flags/flags.css' ) );
+						$flagcss = $this->cache( 'flagcss', 'flagcss', file_get_contents( plugin()->dir . '/admin/country_flags/flags.css' ) );
 					}
 					preg_match( "~flag-" . strtolower( $county_code ) . " \{([^}]+)\}~", $flagcss, $mm );
-					$bg_pos = @ $mm[1] ?: '';
+					$bg_pos = $mm[1] ?? '';
 
-					$country_img = $bg_pos ? '<span title="' . $country_name . ( $city ? ", $city" : '' ) . '" style="cursor:help; display:inline-block; width:16px; height:11px; background:url(' . DEMOC_URL . 'admin/country_flags/flags.png) no-repeat; ' . $bg_pos . '"></span> ' : '';
+					$country_img = $bg_pos ? '<span title="' . $country_name . ( $city ? ", $city" : '' ) . '" style="cursor:help; display:inline-block; width:16px; height:11px; background:url(' . plugin()->url . '/admin/country_flags/flags.png) no-repeat; ' . $bg_pos . '"></span> ' : '';
 				}
 			}
 
@@ -259,27 +262,32 @@ class List_Table_Logs extends \WP_List_Table {
 				: '';
 		}
 
-		if( 'qid' === $col ){
+		if( 'qid' === $column ){
 			if( ! $poll = $this->cache( 'polls', $log->qid ) ){
-				$poll = $this->cache( 'polls', $log->qid, \DemPoll::get_poll_object( $log->qid ) );
+				$poll = $this->cache( 'polls', $log->qid, \DemPoll::get_db_data( $log->qid ) );
 			}
 
 			$actions = '';
-			if( plugin()->cuser_can_edit_poll( $poll ) ){
-				$actions = '
-				<div class="row-actions">
-					<span class="edit"><a href="' . plugin()->edit_poll_url( $poll->id ) . '">' . __( 'Edit poll', 'democracy-poll' ) . '</a> | </span>
-					<span class="edit"><a href="' . esc_url( add_query_arg( [
-						'ip'   => null,
-						'poll' => $log->qid,
-					] ) ) . '">' . __( 'Poll logs', 'democracy-poll' ) . '</a></span>
-				</div>';
+			if( Poll_Utils::cuser_can_edit_poll( $poll ) ){
+				$actions = strtr( <<<'HTML'
+					<div class="row-actions">
+						<span class="edit"><a href="{edit_url}">{edit_text}</a> | </span>
+						<span class="edit"><a href="{logs_url}">{logs_text}</a></span>
+					</div>
+					HTML,
+					[
+						'{edit_url}'  => Poll_Utils::edit_poll_url( $poll->id ),
+						'{edit_text}' => __( 'Edit poll', 'democracy-poll' ),
+						'{logs_url}'  => esc_url( add_query_arg( [ 'ip'=>null, 'poll'=>$log->qid ] ) ),
+						'{logs_text}' => __( 'Poll logs', 'democracy-poll' ),
+					]
+				);
 			}
 
 			return Kses::kses_html( $poll->question ) . $actions;
 		}
 
-		if( 'userid' === $col ){
+		if( 'userid' === $column ){
 			if( ! $user = $this->cache( 'users', $log->userid ) ){
 				$user = $this->cache( 'users', $log->userid, $wpdb->get_row( "SELECT * FROM $wpdb->users WHERE ID = " . (int) $log->userid ) );
 			}
@@ -287,11 +295,11 @@ class List_Table_Logs extends \WP_List_Table {
 			return esc_html( @ $user->user_nicename );
 		}
 
-		if( 'expire' === $col ){
+		if( 'expire' === $column ){
 			return date( 'Y-m-d H:i:s', $log->expire + ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) );
 		}
 
-		if( 'aids' === $col ){
+		if( 'aids' === $column ){
 			$out = [];
 			foreach( explode( ',', $log->aids ) as $aid ){
 				if( ! $answ = $this->cache( 'answs', $aid ) ){
@@ -299,7 +307,7 @@ class List_Table_Logs extends \WP_List_Table {
 				}
 
 				$new = Admin_Page_Logs::is_new_answer( $answ )
-					? sprintf( ' <a href="%s"><span style="color:red;">NEW</span></a>', plugin()->edit_poll_url( $log->qid ) )
+					? sprintf( ' <a href="%s"><span style="color:red;">NEW</span></a>', Poll_Utils::edit_poll_url( $log->qid ) )
 					: '';
 
 				$out[] = '- ' . esc_html( $answ->answer ) . $new;
@@ -309,11 +317,17 @@ class List_Table_Logs extends \WP_List_Table {
 		}
 
 
-		return $log->$col ?? print_r( $log, true );
+		return $log->$column ?? print_r( $log, true );
 	}
 
-	public function column_cb( $item ) {
-		echo '<label><input id="cb-select-' . $item->logid . '" type="checkbox" name="logids[]" value="' . $item->logid . '" /></label>';
+	/**
+	 * Render the checkbox column.
+	 *
+	 * @param \stdClass $item The log item.
+	 */
+	public function column_cb( $item ): void {
+		$logid = (int) $item->logid;
+		echo '<label><input id="cb-select-' . $logid . '" type="checkbox" name="logids[]" value="' . $logid . '" /></label>';
 	}
 
 }
