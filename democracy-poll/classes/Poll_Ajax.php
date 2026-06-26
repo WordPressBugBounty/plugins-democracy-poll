@@ -6,6 +6,10 @@ class Poll_Ajax {
 
 	public string $ajax_url;
 
+	private string $action;
+	private int    $poll_id;
+	private string $answer_ids;
+
 	public function __construct(){
 		$this->ajax_url = admin_url( 'admin-ajax.php' );
 	}
@@ -16,81 +20,168 @@ class Poll_Ajax {
 		add_action( 'wp_ajax_nopriv_dem_ajax', [ $this, 'ajax_request_handler' ] );
 	}
 
+	public function ajax_request_handler(): void {
+		$this->set_request_vars();
+
+		if( ! $this->action ){
+			wp_die( 'error: invalid `act` parameter' );
+		}
+
+		if( ! $this->poll_id ){
+			wp_die( 'error: invalid `pid` parameter' );
+		}
+
+		$actions = [
+			'vote'        => 'action__vote',
+			'delVoted'    => 'action__delete_vote',
+			'viewResults' => 'action__view_results',
+			'view'        => 'action__view_results', // legacy
+			'voteScreen'  => 'action__vote_screen',
+			'vote_screen' => 'action__vote_screen', // legacy
+			'getVotedIds' => 'action__get_voted_ids',
+		];
+
+		$method = $actions[ $this->action ] ?? null;
+		if( ! $method ){
+			wp_die( 'error: unknown action' );
+		}
+
+		/**
+		 * @see self::action__vote()
+		 * @see self::action__delete_vote()
+		 * @see self::action__view_results()
+		 * @see self::action__vote_screen()
+		 * @see self::action__get_voted_ids()
+		 */
+		$response = $this->$method();
+
+		wp_send_json( $response );
+	}
+
 	/**
 	 * Does a preliminary sanitization of the passed request variables.
 	 */
-	public function sanitize_request_vars(): array {
-		return [
-			'act'  => sanitize_text_field( $_POST['dem_act'] ?? '' ),
-			'pid'  => (int) ( $_POST['dem_pid'] ?? 0 ),
-			'aids' => wp_unslash( $_POST['answer_ids'] ?? '' ),
-		];
+	private function set_request_vars(): void {
+		$this->action = sanitize_text_field( $_POST['dem_act'] ?? '' );
+		$this->poll_id = (int) ( $_POST['dem_pid'] ?? 0 );
+		$this->answer_ids = wp_unslash( $_POST['answer_ids'] ?? '' );
 	}
 
-	public function ajax_request_handler(): void {
-		$vars = (object) $this->sanitize_request_vars();
+	protected function create_poll(): Poll {
+		return new Poll( $this->poll_id );
+	}
 
-		if( ! $vars->act ){
-			wp_die( 'error: no parameters have been sent or it is unavailable' );
-		}
+	protected function create_renderer( Poll $poll ): Poll_Renderer {
+		return new Poll_Renderer( $poll );
+	}
 
-		if( ! $vars->pid ){
-			wp_die( 'error: unknown poll id' );
-		}
+	protected function create_voting_service( Poll $poll ): Poll_Voting_Service {
+		return new Poll_Voting_Service( $poll );
+	}
 
-		$poll = new \DemPoll( $vars->pid );
-		$render = $poll->renderer;
-		$service = $poll->service;
+	/**
+	 * Vote and display results.
+	 */
+	private function action__vote(): array {
+		$poll = $this->create_poll();
+		$render = $this->create_renderer( $poll );
+		$voting = $this->create_voting_service( $poll );
 
-		// vote and display results
-		if( 'vote' === $vars->act && $vars->aids ){
-			$voted = $service->vote( $vars->aids );
+		$voted = $voting->vote( $this->answer_ids );
 
-			if( is_wp_error( $voted ) ){
-				echo $render::voted_notice_html( $voted->get_error_message() );
-				echo $render->get_vote_screen();
-			}
-			elseif( $render->not_show_results ){
-				echo $render->get_vote_screen();
-			}
-			else{
-				echo $render->get_result_screen();
-			}
-		}
-		// delete results
-		elseif( 'delVoted' === $vars->act ){
-			$service->delete_vote();
-			echo $render->get_vote_screen();
-		}
-		// view results
-		elseif( 'view' === $vars->act ){
-			if( $render->not_show_results ){
-				echo $render->get_vote_screen();
-			}
-			else{
-				echo $render->get_result_screen();
-			}
-		}
-		// back to voting
-		elseif( 'vote_screen' === $vars->act ){
-			echo $render->get_vote_screen();
-		}
-		/** Get {@see \DemPoll::$voted_for} value */
-		elseif( 'getVotedIds' === $vars->act ){
-			if( $poll->voted_for ){
-				$service->set_cookie(); // request is only made if cookies are not set
-				echo $poll->voted_for;
-			}
-			elseif( $poll->blocked_by_not_logged ){
-				echo 'blocked_because_not_logged_note'; // to display a note
-			}
-			else{
-				// If not voted, set a cookie for half a day to don't do this check every time.
-				$service->set_cookie( 'notVote', ( time() + ( DAY_IN_SECONDS / 2 ) ) );
-			}
+		if( is_wp_error( $voted ) ){
+			return $this->response(
+				$render->get_vote_screen(),
+				'error',
+				$voted->get_error_message()
+			);
 		}
 
-		wp_die();
+		$screen_html = $render->not_show_results
+			? $render->get_vote_screen()
+			: $render->get_result_screen();
+
+		return $this->response( $screen_html );
+	}
+
+	// delete results
+	private function action__delete_vote(): array {
+		$poll = $this->create_poll();
+		$render = $this->create_renderer( $poll );
+		$voting = $this->create_voting_service( $poll );
+
+		$voting->delete_vote();
+
+		return $this->response( $render->get_vote_screen() );
+	}
+
+	// view results
+	private function action__view_results(): array {
+		$poll = $this->create_poll();
+		$render = $this->create_renderer( $poll );
+
+		$screen_html = $render->not_show_results
+			? $render->get_vote_screen()
+			: $render->get_result_screen();
+
+		return $this->response( $screen_html );
+	}
+
+	// back to voting
+	private function action__vote_screen(): array {
+		$poll = $this->create_poll();
+		$render = $this->create_renderer( $poll );
+
+		return $this->response( $render->get_vote_screen() );
+	}
+
+	// request is only made if cookies are not set - 'checkAnswDone' not done
+	private function action__get_voted_ids(): array {
+		$poll = $this->create_poll();
+		$render = $this->create_renderer( $poll );
+
+		$ustate = $poll->user_state;
+		if( $ustate->voted_for ){
+			$ustate->set_vote_cookie();
+
+			return $this->response(
+				'',
+				'already_voted',
+				Poll_Renderer::already_voted_notice_message(),
+				$ustate->voted_for
+			);
+		}
+
+		if( $ustate->blocked_by_not_logged ){
+			return $this->response(
+				'',
+				'login_required',
+				$render->registered_only_notice_html()
+			);
+		}
+
+		// Cache a missing vote for half a day to avoid repeating this check.
+		$ustate->set_not_voted_cookie();
+
+		return $this->response();
+	}
+
+	private function response(
+		string $screen_html = '',
+		string $notice_status = '',
+		string $notice_html = '',
+		string $voted_for = ''
+	): array {
+		return [
+			'screen_html' => $screen_html,
+			'notice'      => $notice_status
+				? [
+					'status' => $notice_status,
+					'html'   => wp_kses_post( $notice_html ),
+				]
+				: null,
+			'voted_for'   => $voted_for,
+		];
 	}
 
 }

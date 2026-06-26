@@ -3,8 +3,9 @@
 namespace DemocracyPoll\Admin;
 
 use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Poll_Storage;
 use DemocracyPoll\Poll_Utils;
-use DemPoll;
+use DemocracyPoll\Poll;
 use function DemocracyPoll\plugin;
 use function DemocracyPoll\options;
 
@@ -59,7 +60,7 @@ class List_Table_Logs extends \WP_List_Table {
 			$this->logs_page->del_only_logs( $log_ids );
 		}
 
-		// delete with votes
+		// delete (with votes)
 		if( 'delete_logs_votes' === $action ){
 			$this->logs_page->del_logs_and_votes( $log_ids );
 		}
@@ -159,19 +160,21 @@ class List_Table_Logs extends \WP_List_Table {
 	}
 
 	public function table_title(): void {
-		if( $this->poll_id ){
-			if( ! $poll = $this->cache( 'polls', $this->poll_id ) ){
-				$poll = new DemPoll( $this->poll_id );
-				$this->cache( 'polls', $this->poll_id, $poll );
-			}
-
-			echo strtr( '<h2><small>{title}</small>{question} <small><a href="{url}">{link_text}</a></small></h2>', [
-				'{title}'     => __( 'Poll\'s logs: ', 'democracy-poll' ),
-				'{question}'  => Kses::kses_html( $poll->question ),
-				'{url}'       => Poll_Utils::edit_poll_url( $this->poll_id ),
-				'{link_text}' => __( 'Edit poll', 'democracy-poll' ),
-			] );
+		if( ! $this->poll_id ){
+			return;
 		}
+
+		if( ! $poll = $this->cache( 'polls', $this->poll_id ) ){
+			$poll = new Poll( $this->poll_id );
+			$this->cache( 'polls', $this->poll_id, $poll );
+		}
+
+		echo strtr( '<h2><small>{title}</small>{question} <small><a href="{url}">{link_text}</a></small></h2>', [
+			'{title}'     => __( 'Poll\'s logs: ', 'democracy-poll' ),
+			'{question}'  => Kses::kses_html( $poll->question ),
+			'{url}'       => Poll_Utils::edit_poll_url( $this->poll_id ),
+			'{link_text}' => __( 'Edit poll', 'democracy-poll' ),
+		] );
 	}
 
 	/**
@@ -257,7 +260,7 @@ class List_Table_Logs extends \WP_List_Table {
 
 		if( 'qid' === $column ){
 			if( ! $poll = $this->cache( 'polls', $log->qid ) ){
-				$poll = $this->cache( 'polls', $log->qid, DemPoll::get_db_data( $log->qid ) );
+				$poll = $this->cache( 'polls', $log->qid, Poll_Storage::get_db_data( $log->qid ) );
 			}
 
 			$actions = '';

@@ -10,6 +10,7 @@ namespace DemocracyPoll;
  * @property-read int    $force_cachegear        Eg: 0
  * @property-read int    $archive_page_id        Eg: 0
  * @property-read string $order_answers          Eg: 'by_winner'
+ * @property-read string $order_answers_voted    Eg: 'by_winner'
  * @property-read int    $use_widget             Eg: 1
  * @property-read int    $hide_vote_button       Eg: 0
  * @property-read int    $toolbar_menu           Eg: 1
@@ -50,9 +51,9 @@ class Options {
 
 	public const OPT_NAME = 'democracy_options';
 
-	private array $opt = [];
+	protected array $opt = [];
 
-	private array $default_options = [
+	protected array $default_options = [
 		'main'   => [
 			// Store logs in the database.
 			'keep_logs'              => 1,
@@ -61,6 +62,7 @@ class Options {
 			'force_cachegear'        => 0,
 			'archive_page_id'        => 0,
 			'order_answers'          => 'by_winner',
+			'order_answers_voted'    => 'by_winner',
 			'use_widget'             => 1,
 			// Hide the vote button where possible and vote by clicking an answer.
 			'hide_vote_button'       => 0,
@@ -90,7 +92,8 @@ class Options {
 			'loader_fill'          => '',
 			// How to fill the progress bar.
 			'graph_from_total'     => 1,
-			'answs_max_height'     => '35em',
+			// eg: 500px, 50em. Leave empty to disable
+			'answs_max_height'     => '',
 			// px
 			'anim_speed'           => 400,
 			// msec
@@ -146,10 +149,12 @@ class Options {
 
 		// append default values
 		foreach( $this->default_options as $part => $options ){
-			foreach( $options as $key => $val ){
-				if( ! isset( $this->opt[ $key ] ) ){
-					$this->opt[ $key ] = $val;
+			foreach( $options as $name => $val ){
+				if( ! isset( $this->opt[ $name ] ) ){
+					$this->opt[ $name ] = $val;
 				}
+
+				$this->prepare_option( $name, $this->opt[ $name ] );
 			}
 		}
 	}
@@ -242,7 +247,6 @@ class Options {
 	}
 
 	private function is_option_exists( string $option_name ): bool {
-
 		foreach( $this->default_options as $part => $options ){
 			if( array_key_exists( $option_name, $options ) ){
 				return true;
@@ -250,6 +254,18 @@ class Options {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Prepare some options values before set.
+	 * For backward compatability.
+	 */
+	private function prepare_option( $name, & $val ): void {
+		if( $name === 'answs_max_height' ){
+			if( $val === '-1' || $val === '0' ){
+				$val = '';
+			}
+		}
 	}
 
 }

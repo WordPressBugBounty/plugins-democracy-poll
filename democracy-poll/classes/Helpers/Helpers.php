@@ -2,14 +2,17 @@
 
 namespace DemocracyPoll\Helpers;
 
+use DemocracyPoll\Poll;
+use WP_Post;
+
 final class Helpers {
 
 	public static function allowed_answers_orders(): array {
 		return [
-			'by_id'     => __( 'As it was added (by ID)', 'democracy-poll' ),
-			'by_winner' => __( 'Winners at the top', 'democracy-poll' ),
-			'alphabet'  => __( 'Alphabetically', 'democracy-poll' ),
-			'mix'       => __( 'Mix', 'democracy-poll' ),
+			'by_winner' => __( 'By winner', 'democracy-poll' ),
+			'alphabet'  => __( 'Alphabetically (a-z)', 'democracy-poll' ),
+			'by_id'     => __( 'By ID (added order)', 'democracy-poll' ),
+			'mix'       => __( 'Mixed (shuffled)', 'democracy-poll' ),
 		];
 	}
 
@@ -17,7 +20,7 @@ final class Helpers {
 		$options = [];
 		foreach( self::allowed_answers_orders() as $val => $title ){
 			$options[] = sprintf( '<option value="%s" %s>%s</option>',
-				esc_attr( $val ), selected( $selected, $val, 0 ), esc_html( $title )
+				esc_attr( $val ), selected( $selected, $val, false ), esc_html( $title )
 			);
 		}
 
@@ -25,35 +28,11 @@ final class Helpers {
 	}
 
 	/**
-	 * Sorts an array of objects.
-	 *
-	 * Pass an array of objects in $array, specify sorting parameters in $args,
-	 * and get a sorted array of objects/arrays as a result.
-	 */
-	public static function objects_array_sort( array $array, array $args = [ 'votes' => 'DESC' ] ): array {
-		$args = array_map( 'strtoupper', $args );
-
-		usort( $array, static function( $a, $b ) use ( $args ) {
-			foreach( $args as $k => $asc_desc ){
-				$res = is_array( $a ) ? $a[$k] <=> $b[$k] : $a->$k <=> $b->$k;
-
-				if( $res !== 0 ){
-					return ( $asc_desc === 'DESC' ) ? -$res : $res;
-				}
-			}
-
-			return 0;
-		} );
-
-		return $array;
-	}
-
-	/**
 	 * Retrieves the post objects to which the poll is attached (where the shortcode is used).
 	 *
-	 * @param \DemPoll $poll  The current poll object from the database.
+	 * @param Poll $poll  The current poll object from the database.
 	 *
-	 * @return \WP_Post[] An array of post objects or an empty array.
+	 * @return WP_Post[] An array of post objects or an empty array.
 	 */
 	public static function get_posts_with_poll( $poll ): array {
 		global $wpdb;

@@ -2,6 +2,9 @@
 
 namespace DemocracyPoll\Admin;
 
+use DemocracyPoll\Poll;
+use DemocracyPoll\Poll_Renderer;
+use DemocracyPoll\Poll_Storage;
 use function DemocracyPoll\plugin;
 use function DemocracyPoll\options;
 
@@ -82,7 +85,7 @@ class Admin_Page_Design implements Admin_Subpage_Interface {
 		?>
 		<div style="display: flex; align-items: center; gap: .5rem;">
 			<input type="text" class="iris_color <?= esc_attr( $class ) ?>" name="<?= esc_attr( $name ) ?>" value="<?= esc_attr( $value ) ?>">
-			<span><?= esc_html__( $title ) ?></span>
+			<span><?= esc_html( $title ) ?></span>
 		</div>
 		<?php
 	}
@@ -101,7 +104,7 @@ class Admin_Page_Design implements Admin_Subpage_Interface {
 
 	public static function polls_preview( bool $show_colorpicker = false ): void {
 		?>
-		<section class="group">
+		<section class="demoptions__group">
 			<?php
 			if( $show_colorpicker ){
 				self::color_picker_html( [
@@ -110,32 +113,32 @@ class Admin_Page_Design implements Admin_Subpage_Interface {
 				] );
 			}
 			?>
-			<div class="block polls-preview">
+			<div class="demoptions__block polls-preview">
 				<?php
-				$poll = new \DemPoll( \DemPoll::get_db_data( 'rand' ) );
-				$render = $poll->renderer;
+				$poll = new Poll( Poll_Storage::get_db_data( 'rand' ) );
+				$render = new Poll_Renderer( $poll );
 
 				if( $poll->id ){
 					$answers = wp_list_pluck( $poll->answers, 'aid' );
-					$poll->voted_for = (string) ( $answers ? $answers[ array_rand( $answers ) ] : '' );
+					$poll->user_state->voted_for = (string) ( $answers ? $answers[ array_rand( $answers ) ] : '' );
 
 					$rm_disabled = static function( $val ) {
 						return str_replace( 'disabled="disabled"', '', $val );
 					};
 
 					$html = <<<HTML
-						<div class="poll"><p class="tit">{RESULTS_TXT}</p>{VOTED_SCREEN}</div>
-						<div class="poll"><p class="tit">{VOTE_TXT}</p>{FORCE_VOTE_SCREEN}</div>
-						<div class="poll show-loader"><p class="tit">{AJAX_TXT}</p>{VOTE_SCREEN}</div>
+						<div class="poll"><p class="tit">{RESULTS_TXT}</p>{VOTED_POLL}</div>
+						<div class="poll"><p class="tit">{VOTE_TXT}</p>{FORCE_VOTE_POLL}</div>
+						<div class="poll show-loader"><p class="tit">{AJAX_TXT}</p>{VOTE_POLL}</div>
 						HTML;
 
 					echo strtr( $html, [
-						'{RESULTS_TXT}'       => __( 'Results view:', 'democracy-poll' ),
-						'{VOTE_TXT}'          => __( 'Vote view:', 'democracy-poll' ),
-						'{AJAX_TXT}'          => __( 'AJAX loader view:', 'democracy-poll' ),
-						'{VOTED_SCREEN}'      => $rm_disabled( $render->get_screen( 'voted' ) ),
-						'{FORCE_VOTE_SCREEN}' => $rm_disabled( $render->get_screen( 'force_vote' ) ),
-						'{VOTE_SCREEN}'       => $rm_disabled( $render->get_screen( 'vote' ) ),
+						'{RESULTS_TXT}'     => __( 'Results view:', 'democracy-poll' ),
+						'{VOTE_TXT}'        => __( 'Vote view:', 'democracy-poll' ),
+						'{AJAX_TXT}'        => __( 'AJAX loader view:', 'democracy-poll' ),
+						'{VOTED_POLL}'      => $rm_disabled( $render->render_poll( 'voted' ) ),
+						'{FORCE_VOTE_POLL}' => $rm_disabled( $render->render_poll( 'force_vote' ) ),
+						'{VOTE_POLL}'       => $rm_disabled( $render->render_poll( 'vote' ) ),
 					] );
 				}
 				else{

@@ -72,10 +72,10 @@ class Options_CSS {
 		$d_fill_voted = $opt->line_fill_voted;
 
 		$css_vars = array_filter( [
-			$d_bg         ? "--dem-graph-bg: $d_bg"            : '',
-			$d_fill       ? "--dem-fill: $d_fill"              : '',
-			$d_height     ? "--dem-graph-height: $d_height"    : '',
-			$d_fill_voted ? "--dem-fill-voted: $d_fill_voted"  : '',
+			$d_bg         ? "--dem-graph-bg: $d_bg"                  : '',
+			$d_fill       ? "--dem-fill-color: $d_fill"              : '',
+			$d_height     ? "--dem-graph-height: $d_height"          : '',
+			$d_fill_voted ? "--dem-fill-voted-color: $d_fill_voted"  : '',
 		] );
 
 		if( $button ){
@@ -110,7 +110,7 @@ class Options_CSS {
 	 * Compresses css using YUICompressor
 	 */
 	public function cssmin( string $input_css ): string {
-		require_once plugin()->dir . '/admin/CssMin/cssmin.php';
+		require_once plugin()->dir . '/assets/admin/CssMin/cssmin.php';
 
 		$compressor = new \tubalmartin\CssMin\Minifier();
 		// $compressor->set_memory_limit('256M');

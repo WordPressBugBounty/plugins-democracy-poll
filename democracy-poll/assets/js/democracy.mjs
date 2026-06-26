@@ -1,23 +1,25 @@
 import Utils from './Utils.mjs'
-import State from './State.mjs'
 import Loader from './Loader.mjs'
 import Cache from './Cache.mjs'
+import Config from './Config.mjs'
+import PollState from './PollState.mjs'
+import Notice from './Notice.mjs'
 
 document.addEventListener( 'DOMContentLoaded', democracyInit )
 
 function democracyInit(){
-	const polls = document.querySelectorAll( State.mainSel )
+	const polls = document.querySelectorAll( Config.mainSel )
 	if( ! polls.length ){
 		return
 	}
 
-	State.$loader = document.querySelector( '.dem-loader' )
+	Config.$loader = document.querySelector( '.dem_loader_js' )
 
-	const opts = Cache.getOpts( polls[0] )
-	State.ajaxurl = opts.ajax_url
-	State.answMaxHeight = opts.answs_max_height
-	State.animSpeed = parseInt( opts.anim_speed )
-	State.lineAnimSpeed = parseInt( opts.line_anim_speed )
+	const config = window.democracyPollConfig || {}
+	Config.ajaxurl = config.ajax_url
+	Config.cookieDays = config.cookie_days
+	Config.animSpeed = parseInt( config.anim_speed )
+	Config.lineAnimSpeed = parseInt( config.line_anim_speed )
 
 	queueMicrotask( init ) // wait for functions
 
@@ -25,13 +27,14 @@ function democracyInit(){
 	function init(){
 		const demScreens = []
 		polls.forEach( poll => {
-			const screen = poll.querySelector( State.screenSel )
+			PollState.get( poll )
+			const screen = poll.querySelector( Config.screenSel )
 			if( screen && Utils.isVisible( screen ) ){
 				demScreens.push( screen )
 			}
 		} )
 
-		demScreens.forEach( screen => initActions( screen ) )
+		demScreens.forEach( screen => initScreen( screen ) )
 
 		const setScreenHeight = () => demScreens.forEach( screen => Utils.setHeight( screen ) )
 		window.addEventListener( 'load', setScreenHeight ) // update height once more
@@ -44,43 +47,39 @@ function democracyInit(){
 		 * Requires js-cookie to be installed
 		 * and extra Democracy variables/methods.
 		 */
-		Cache.actionsHandler = initActions
+		Cache.actionsHandler = initScreen
 		Cache.initAll()
 	}
 
 	// Initialize all events for each poll: clicks, height, button visibility
-	// applies to '.dem-screen'
-	function initActions( screen ){
-		// Attach click handlers for all marked elements inside the given element:
-		// includes AJAX on click and other Democracy interactions ----------
-		const attr = 'data-dem-act'
+	// apply to '.dem_screen_js'
+	function initScreen( screen ){
+		// init all actions elements
+		screen.querySelectorAll( '[data-dem-act]' )
+			.forEach( actionEl => {
+				// clear URL so the request URL isn't visible
+				( actionEl.tagName === 'A' ) && actionEl.setAttribute( 'href', '' )
 
-		// Add Click events
-		screen.querySelectorAll( '[' + attr + ']' ).forEach( act => {
-			if( act.tagName === 'A' ){
-				act.setAttribute( 'href', '' ) // clear URL so the request URL isn't visible
-			}
-			act.addEventListener( 'click', ( ev ) => {
-				ev.preventDefault()
-				act.blur()
-				doAction( act, act.getAttribute( attr ) )
+				actionEl.addEventListener( 'click', ( ev ) => {
+					ev.preventDefault()
+					actionEl.blur()
+					doAction( actionEl, actionEl.getAttribute( 'data-dem-act' ) )
+				} )
 			} )
-		} )
 
-		// Hide vote button
-		if( screen.querySelector( 'input[type=radio][data-dem-act=vote]' ) ){
-			screen.querySelectorAll( '.dem-vote-button' ).forEach( button => button.style.display = 'none' )
-		}
+		hideAutoVoteButton( screen )
 
 		Utils.resetHeight( screen )
 
 		// collapse content if there are too many answers
 		Utils.setAnswsMaxHeight( screen )
 
+		Utils.updateMaxAnswLimit( screen )
+
 		// animate filled bars - line_animation
-		if( State.lineAnimSpeed ){
-			screen.querySelectorAll( '.dem-fill' ).forEach( fill => {
-				setTimeout( () => animateFill( fill ), State.animSpeed )
+		if( Config.lineAnimSpeed ){
+			screen.querySelectorAll( '.dem_fill_js' ).forEach( fill => {
+				setTimeout( () => animateFill( fill ), Config.animSpeed )
 			} )
 		}
 
@@ -89,78 +88,89 @@ function democracyInit(){
 		Utils.setHeight( screen, false )
 	}
 
-	function animateFill( fill ){
-		const targetWidth = fill.dataset['width']
-		if( ! targetWidth ){
-			return
-		}
+	function hasAutoVoteAnswers( screen ){
+		return !! screen.querySelector( '.dem_vote_wrap_js[data-is_auto_vote="1"]' )
+	}
 
-		if( ! fill.animate ){
-			fill.style.width = targetWidth
-			return
+	function hideAutoVoteButton( screen ){
+		if( hasAutoVoteAnswers( screen ) && ! screen.querySelector( Config.userAnswerSel ) ){
+			screen.querySelectorAll( '.dem_vote_button_js' ).forEach( button => button.style.display = 'none' )
 		}
-
-		fill.animate( [
-				{ width: window.getComputedStyle( fill ).width },
-				{ width: targetWidth }
-			],
-			{ duration: State.lineAnimSpeed, easing: 'linear', fill: 'forwards' }
-		)
-			.onfinish = () => fill.style.width = targetWidth
 	}
 
 	// Add user answer (link)
-	function addAnswer( the ){
-		const screen = the.closest( State.screenSel )
+	function addYourAnswerClickHandler( linkBtn ){
+		const screen = linkBtn.closest( Config.screenSel )
 		const isMultiple = screen.querySelector( '[type=checkbox]' )
-		const input = Utils.newEl( '<input type="text" class="dem-add-answer-txt" value="">' )
+		if( isMultiple && Utils.maxAnswLimitData( screen ).isMaxReached ){
+			Utils.demShake( linkBtn )
 
-		// show vote button
-		const btn = screen.querySelector( '.dem-vote-button' )
-		btn && Utils.showElement( btn )
+			return false
+		}
+
+		const newAInput = Utils.newEl( '<input type="text" class="dem-add-answer-txt dem_add_answer_txt_js" value="">' )
+		newAInput.addEventListener( 'keydown', ev => {
+			if( ev.key === 'Enter' && ! ev.isComposing ){
+				ev.preventDefault()
+				// we need to try to select button because on "dots loader" - if pass input dots will be added to answer text
+				const actEl = screen.querySelector( '.dem_vote_button_js [data-dem-act="vote"]' ) || newAInput
+				doAction( actEl, 'vote' )
+			}
+		} )
+		newAInput.closeListeners = []
+		newAInput.closeNewAnswer = () => closeNewAnswer( screen, newAInput, linkBtn )
 
 		// handle radio inputs: uncheck and attach click handler
 		screen.querySelectorAll( '[type=radio]' ).forEach( radio => {
-			radio.checked = false // uncheck
-			radio.addEventListener( 'click', () => {
-				Utils.fadeIn( the )
-				document.querySelectorAll( State.userAnswerSel ).forEach( node => node.remove() )
-			} )
+			radio.checked = false
+			newAInput.closeListeners.push( radio )
+			radio.addEventListener( 'click', newAInput.closeNewAnswer )
 		} )
 
-		//
-		Utils.hideElement( the )
-		the.parentElement.append( input )
-		Utils.hideElement( input )
-		Utils.fadeIn( input )
-		input.focus()
+		// show vote button
+		const btn = screen.querySelector( '.dem_vote_button_js' )
+		btn && Utils.showElement( btn )
+
+		// insert in DOM
+		Utils.hideElement( linkBtn )
+		linkBtn.after( newAInput )
+		Utils.hideElement( newAInput )
+		Utils.fadeIn( newAInput )
+		newAInput.focus()
+		Utils.updateMaxAnswLimit( screen )
+		requestAnimationFrame( () => Utils.setHeight( screen, true ) )
 
 		// add a button to remove the user-entered text
-		if( isMultiple ){
-			const close = Utils.newEl( '<span class="dem-add-answer-close">×</span>' )
-			close.style.lineHeight = input.offsetHeight + 'px'
-			input.before( close )
+		const close = Utils.newEl( '<span class="dem-add-answer-close dem_add_answer_close_js">×</span>' )
+		close.style.lineHeight = newAInput.offsetHeight + 'px' // !!! after `linkBtn.after( newAInput )`
+		close.addEventListener( 'click', newAInput.closeNewAnswer )
+		newAInput.before( close )
+	}
 
-			close.addEventListener( 'click', ev => {
-				const parent = close.parentElement
-				const link = parent.querySelector( 'a' )
-				parent.querySelector( 'input' ).remove()
-				close.remove()
-				Utils.fadeIn( link )
-			} )
+	function closeNewAnswer( screen, newAInput, linkBtn ) {
+		// no input in DOM - nothing to remove
+		if( ! newAInput.isConnected ){
+			return
 		}
 
-		return false // !!!
+		newAInput.closeListeners.forEach( radio => radio.removeEventListener( 'click', newAInput.closeNewAnswer ) )
+
+		newAInput.parentElement.querySelector( '.dem_add_answer_close_js' )?.remove()
+		newAInput.remove()
+		Utils.fadeIn( linkBtn )
+		Utils.updateMaxAnswLimit( screen )
+		hideAutoVoteButton( screen )
+		requestAnimationFrame( () => Utils.setHeight( screen, true ) )
 	}
 
 	// Collect answers and return as a string
 	function collectAnsw( the ){
-		const screen = the.closest( State.screenSel )
+		const screen = the.closest( Config.screenSel )
 		if( ! screen ){
 			return ''
 		}
 
-		const userTextInput = screen.querySelector( State.userAnswerSel )
+		const userTextInput = screen.querySelector( Config.userAnswerSel )
 		const userText = userTextInput ? userTextInput.value : ''
 		let answ = []
 
@@ -186,10 +196,10 @@ function democracyInit(){
 	}
 
 	// handle requests on click
-	function doAction( the, action ){
-		const poll = the.closest( State.mainSel )
+	function doAction( clickedEl, action ){
+		const poll = clickedEl.closest( Config.mainSel )
 		const ajaxData = {
-			dem_pid: Cache.getOpts( poll ).pid,
+			dem_pid: PollState.get( poll ).pid,
 			dem_act: action,
 			action : 'dem_ajax'
 		}
@@ -201,35 +211,36 @@ function democracyInit(){
 
 		// Collect answers
 		if( 'vote' === action ){
-			ajaxData.answer_ids = collectAnsw( the )
+			ajaxData.answer_ids = collectAnsw( clickedEl )
 			if( ! ajaxData.answer_ids ){
-				Utils.demShake( the )
+				Utils.demShake( clickedEl )
 				return false
 			}
 		}
 
 		// revote button confirmation
-		if( 'delVoted' === action && ! confirm( the.dataset['confirm_text'] ) ){
+		if( 'delVoted' === action && ! confirm( clickedEl.dataset['confirm_text'] ) ){
 			return false
 		}
 
 		// add visitor answer button
 		if( 'newAnswer' === action ){
-			addAnswer( the )
+			addYourAnswerClickHandler( clickedEl )
 			return false
 		}
 
 		// AJAX
-		const screen = the.closest( State.screenSel )
+		const screen = clickedEl.closest( Config.screenSel )
 		if( ! screen ){
 			return false
 		}
 
-		Loader.setLoader( the )
-		Cache.post( State.ajaxurl, ajaxData )
+		Loader.setLoader( clickedEl )
+		Cache.post( Config.ajaxurl, ajaxData )
 			.finally( () => Loader.unsetLoader( screen ) )
-			.then( html => {
-				if( ! html ){
+			.then( response => {
+				if( ! response.screen_html ){
+					Notice.set( poll, response.notice )
 					return
 				}
 
@@ -239,8 +250,9 @@ function democracyInit(){
 				screen.style.transition = `opacity ${fadeDuration}ms ease`
 				screen.style.opacity = 0
 				setTimeout( () => {
-					screen.innerHTML = html
-					initActions( screen ) // rebind events
+					screen.innerHTML = response.screen_html
+					initScreen( screen ) // rebind events
+					Notice.set( poll, response.notice )
 					isElemVisibleInViewport( poll ) || poll.scrollIntoView( { behavior: 'smooth', block: 'start' } )
 					screen.style.opacity = 1
 				}, fadeDuration )
@@ -251,6 +263,26 @@ function democracyInit(){
 			} )
 
 		return false
+	}
+
+	function animateFill( fill ){
+		const targetWidth = fill.dataset['width']
+		if( ! targetWidth ){
+			return
+		}
+
+		if( ! fill.animate ){
+			fill.style.width = targetWidth
+			return
+		}
+
+		fill.animate( [
+				{ width: window.getComputedStyle( fill ).width },
+				{ width: targetWidth }
+			],
+			{ duration: Config.lineAnimSpeed, easing: 'linear', fill: 'forwards' }
+		)
+		.onfinish = () => fill.style.width = targetWidth
 	}
 
 	function isElemVisibleInViewport( el ) {

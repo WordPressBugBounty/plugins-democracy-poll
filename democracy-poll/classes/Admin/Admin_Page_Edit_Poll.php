@@ -3,15 +3,16 @@
 namespace DemocracyPoll\Admin;
 
 use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Poll;
+use DemocracyPoll\Poll_Storage;
 use DemocracyPoll\Poll_Utils;
-use DemPoll;
 use function DemocracyPoll\plugin;
 
 class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 
 	private int $poll_id = 0;
 
-	private ?DemPoll $poll = null;
+	private ?Poll $poll = null;
 
 	private Admin_Page $admpage;
 
@@ -66,10 +67,11 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	public function render(): void {
 		// no access
 		if( $this->poll_id && ! Poll_Utils::cuser_can_edit_poll( $this->poll_id ) ){
-			wp_die( 'Sorry, you are not allowed to access this page.' );
+			echo '<div class="notice notice-error"><p>Sorry, you are not allowed to access this page</p></div>';
+			return;
 		}
 
-		$this->poll = $this->poll_id ? new DemPoll( $this->poll_id ) : null;
+		$this->poll = new Poll( $this->poll_id );
 
 		require __DIR__ . '/tpl/edit-poll.php';
 	}
@@ -296,7 +298,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		}
 
 		/**
-		 * Allows to perform actions after a poll is inserted or updated.
+		 * Allows performing actions after a poll is inserted or updated.
 		 *
 		 * @param int  $poll_id The ID of the poll that was inserted or updated.
 		 * @param bool $update  Whether the poll was updated (true) or created (false).
@@ -378,7 +380,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	/**
 	 * Displays poll activation/deactivation button.
 	 */
-	public static function activate_button( DemPoll $poll, $reverse = false, $size = 'big' ): string {
+	public static function activate_button( Poll $poll, $reverse = false, $size = 'big' ): string {
 		if( $poll->active ){
 			$url = esc_url( Admin_Page::add_nonce( add_query_arg( [ 'dmc_deactivate_poll' => $poll->id, 'dmc_activate_poll' => null, ] ) ) );
 			$title = __( 'Deactivate', 'democracy-poll' );
@@ -466,7 +468,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	private static function _poll_opening( int $poll_id, string $action ): bool {
 		global $wpdb;
 
-		$poll = DemPoll::get_db_data( $poll_id );
+		$poll = Poll_Storage::get_db_data( $poll_id );
 		if( ! $poll ){
 			return false;
 		}
@@ -504,7 +506,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	private static function _poll_activation( int $poll_id, string $action ): bool {
 		global $wpdb;
 
-		$poll = DemPoll::get_db_data( $poll_id );
+		$poll = Poll_Storage::get_db_data( $poll_id );
 		if( ! $poll ){
 			return false;
 		}

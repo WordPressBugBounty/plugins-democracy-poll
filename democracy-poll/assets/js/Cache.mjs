@@ -1,14 +1,16 @@
 import Cookies from 'js-cookie'
-import State from './State.mjs'
+import Config from './Config.mjs'
+import PollState from './PollState.mjs'
 import Loader from './Loader.mjs'
 import Utils from './Utils.mjs'
+import Notice from './Notice.mjs'
 
 export default class Cache {
 
 	static actionsHandler
 
 	static initAll(){
-		const cacheBlocks = document.querySelectorAll( '.dem-cache-screens' )
+		const cacheBlocks = document.querySelectorAll( '.dem_cache_screens_js' )
 		if( ! cacheBlocks.length ){
 			return
 		}
@@ -23,20 +25,19 @@ export default class Cache {
 			return
 		}
 
-		const screen = dem.querySelector( State.screenSel )
+		const screen = dem.querySelector( Config.screenSel )
 		if( ! screen ){
 			return
 		}
 
-		const demOpts = Cache.getOpts( dem )
-		const demId = demOpts.pid
-		const answrs = Cookies.get( 'demPoll_' + demId )
-		const notVoteFlag = answrs === 'notVote' // If we already checked that user hasn't voted, don't request again
-		const isAnswrs = typeof answrs !== 'undefined' && ! notVoteFlag
+		const demId = PollState.get( dem ).pid
+		const answrs = Cache.getPollCookie( demId, Config.cookieDays )
+		const notVotedFlag = answrs === 'notVoted' // If we already checked that user hasn't voted, don't request again
+		const isAnswrs = answrs && ! notVotedFlag
 
 		// choose which screen to show and how to handle it
-		const voteBlock = cacheBlock.querySelector( State.screenSel + '-cache.vote' )
-		const votedBlock = cacheBlock.querySelector( State.screenSel + '-cache.voted' )
+		const voteBlock = cacheBlock.querySelector( Config.cacheScreenSel + '.vote' )
+		const votedBlock = cacheBlock.querySelector( Config.cacheScreenSel + '.voted' )
 		const voteHTML = voteBlock ? voteBlock.innerHTML : ''
 		const votedHTML = votedBlock ? votedBlock.innerHTML : ''
 
@@ -58,7 +59,7 @@ export default class Cache {
 
 		Cache.actionsHandler( screen )
 
-		if( notVoteFlag ){
+		if( notVotedFlag ){
 			return // exit if it has already been checked that the user has not voted.
 		}
 
@@ -72,37 +73,40 @@ export default class Cache {
 			const check__fn = function(){
 				tmout = setTimeout( function(){
 					// Run once!
-					if( dem.classList.contains( 'checkAnswDone' ) ){
+					if( dem._vote_check_done ){
 						return
 					}
+					dem._vote_check_done = true
 
-					dem.classList.add( 'checkAnswDone' )
-
-					const forDotsLoader = dem.querySelector( '.dem-link' )
+					const forDotsLoader = dem.querySelector( '.dem_link_js' )
 					if( forDotsLoader ){
 						Loader.setLoader( forDotsLoader )
 					}
 
-					Cache.post( State.ajaxurl, {
+					Cache.post( Config.ajaxurl, {
 						dem_pid: demId,
 						dem_act: 'getVotedIds',
 						action : 'dem_ajax'
 					} )
-						.then( reply => {
+						.then( response => {
 							forDotsLoader && Loader.unsetLoader( screen )
 
-							// exit if there are no answers
-							if( ! reply ){
+							if( ! response.voted_for && ! response.notice ){
 								return
 							}
 
 							screen.dataset['expanded'] = 'true'
-							screen.innerHTML = votedHTML
-							Cache.setAnswers( screen, reply )
+							const setVoted = response.voted_for && votedHTML
+							screen.innerHTML = setVoted ? votedHTML : voteHTML
+							screen.classList.remove( 'vote', 'voted' )
+							screen.classList.add( setVoted ? 'voted' : 'vote' )
+							Cache.setAnswers( screen, response.voted_for )
 							Cache.actionsHandler( screen )
 
-							// a message that you have voted or for users only
-							Cache.showNotice( screen, reply )
+							if( response.notice?.status === 'login_required' ){
+								screen.querySelector( '.dem_revote_button_js' )?.remove()
+							}
+							Notice.set( dem, response.notice, true )
 						} )
 						.catch( error => {
 							forDotsLoader && Loader.unsetLoader( screen )
@@ -119,45 +123,19 @@ export default class Cache {
 		}
 	}
 
-	static showNotice( screen, type ){
-		let notice = screen.querySelector( '.dem-youarevote' ) // "already voted"
-
-		// If only logged-in users can vote
-		if( type === 'blocked_because_not_logged_note' ){
-			const revoteBtn = screen.querySelector( '.dem-revote-button' )
-			if( revoteBtn ){
-				revoteBtn.remove()
-			}
-
-			notice = screen.querySelector( '.dem-only-users' )
-		}
-
-		if( ! notice ){
-			return
-		}
-
-		Utils.showElement( notice )
-		screen.prepend( notice )
-		// hide
-		setTimeout( () => Cache.slideUp( notice, 600 ), 10000 )
-	}
-
 	// set user's answers in results/vote block
 	static setAnswers( screen, answrs ){
 		const aids = answrs.split( /,/ ).filter( aid => aid !== '' )
 
 		// results view
 		if( screen.classList.contains( 'voted' ) ){
-			const dema = screen.querySelector( '.dem-answers' )
-			const votedClass = dema ? dema.dataset.votedClass : ''
-			const votedtxt = dema ? dema.dataset.votedTxt : ''
+			const dema = screen.querySelector( '.dem_answers_list_js' )
+			const votedtxt = dema ? dema.dataset.voted_txt : ''
 
 			aids.forEach( aid => {
 				const nodes = Cache.queryAidNodes( screen, aid )
 				nodes.forEach( node => {
-					if( votedClass ){
-						node.classList.add( votedClass )
-					}
+					node.classList.add( 'dem-voted-this' )
 
 					const title = node.getAttribute( 'title' ) || ''
 					if( votedtxt ){
@@ -167,12 +145,12 @@ export default class Cache {
 			} )
 
 			// remove "Vote" button
-			screen.querySelectorAll( '.dem-vote-link' ).forEach( node => node.remove() )
+			screen.querySelectorAll( '.dem_vote_link_js' ).forEach( node => node.remove() )
 		}
 		// voting view
 		else{
 			const answerNodes = Array.from( screen.querySelectorAll( '[data-aid]' ) )
-			const btnVoted = screen.querySelector( '.dem-voted-button' )
+			const btnVoted = screen.querySelector( '.dem_voted_button_js' )
 
 			// set answers
 			aids.forEach( aid => {
@@ -192,7 +170,7 @@ export default class Cache {
 			} )
 
 			// remove voting button
-			screen.querySelectorAll( '.dem-vote-button' ).forEach( node => node.remove() )
+			screen.querySelectorAll( '.dem_vote_button_js' ).forEach( node => node.remove() )
 			//screen.querySelectorAll( '[data-dem-act="vote"]' ).forEach( node => node.remove() )
 
 			// if "already voted" button exists, revote is disabled
@@ -201,7 +179,7 @@ export default class Cache {
 			}
 			// show revote button
 			else{
-				screen.querySelectorAll( '.dem-revote-button-wrap' ).forEach( Utils.showElement )
+				screen.querySelectorAll( '.dem_revote_button_wrap_js' ).forEach( Utils.showElement )
 			}
 		}
 	}
@@ -209,59 +187,47 @@ export default class Cache {
 	static findMainBlock( cacheBlock ){
 		let prev = cacheBlock.previousElementSibling
 		while( prev ){
-			if( prev.matches( State.mainSel ) ){
+			if( prev.matches( Config.mainSel ) ){
 				return prev
 			}
 			prev = prev.previousElementSibling
 		}
 
-		return cacheBlock.closest( State.mainSel )
+		return cacheBlock.closest( Config.mainSel )
 	}
 
-	static getOpts( el ){
-		const raw = el.dataset.opts
+	static getPollCookie( pollId, cookieDays ){
+		const raw = Cookies.get( 'demPoll' )
 		if( ! raw ){
-			return {}
+			return null
 		}
 
-		try{
-			return JSON.parse( raw )
+		const targetPid = String( pollId )
+		const voteTTL = Math.trunc( Number( cookieDays ) * 86400 )
+		const now = Date.now() / 1000
+		let value = null
+
+		for( const record of raw.split( '|' ) ){
+			const match = record.match( /^(\d+):(0|[1-9]\d*(?:_[1-9]\d*)*)-([0-9a-z]+)$/ )
+			if( ! match || match[1] !== targetPid ){
+				continue
+			}
+
+			const aids = match[2]
+			const timestamp = parseInt( match[3], 36 )
+			const ttl = (aids === '0') ? 43200 : voteTTL
+
+			if( timestamp && ttl > 0 && timestamp + ttl > now ){
+				value = aids === '0' ? 'notVoted' : aids.replaceAll( '_', ',' )
+			}
 		}
-		catch( e ){
-			return {}
-		}
+
+		return value
 	}
 
 	static queryAidNodes( screen, aid ){
 		const safeAid = (window.CSS && CSS.escape) ? CSS.escape( aid ) : aid
 		return Array.from( screen.querySelectorAll( '[data-aid="' + safeAid + '"]' ) )
-	}
-
-	static slideUp( el, duration ){
-		const height = el.getBoundingClientRect().height
-		if( ! height ){
-			el.style.display = 'none'
-			return
-		}
-
-		el.style.overflow = 'hidden'
-		el.style.height = height + 'px'
-		el.style.transition = 'height ' + duration + 'ms ease'
-
-		requestAnimationFrame( () => {
-			el.style.height = '0px'
-		} )
-
-		const cleanup = () => {
-			el.style.display = 'none'
-			el.style.overflow = ''
-			el.style.height = ''
-			el.style.transition = ''
-			el.removeEventListener( 'transitionend', cleanup )
-		}
-
-		el.addEventListener( 'transitionend', cleanup )
-		setTimeout( cleanup, duration + 50 )
 	}
 
 	static post( url, data ){
@@ -280,7 +246,7 @@ export default class Cache {
 				if( ! response.ok ){
 					throw new Error( 'Bad network response' )
 				}
-				return response.text()
+				return response.json()
 			} )
 	}
 

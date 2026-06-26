@@ -1,25 +1,29 @@
 <?php
 
+use DemocracyPoll\Admin\Post_Metabox;
+use DemocracyPoll\Poll;
+use DemocracyPoll\Poll_Renderer;
+
 /**
- * Gets poll object.
- *
- * @param object|int $poll_id Poll ID to get. OR poll object from DB.
+ * @param Poll|int $poll_id  Poll ID to get. OR poll object from DB.
  */
-function democracy_get_poll( $poll_id ): \DemPoll {
-	return new \DemPoll( $poll_id );
+function democracy_get_poll( $poll_id ): Poll {
+	return new Poll( $poll_id );
 }
 
 /**
  * Gets a poll attached to the current post.
  *
  * @param int $post_id  ID or object of post, attached poll of which you want to get.
+ *
+ * @return int|string Poll ID or 'last' or 'rand'.
  */
-function get_post_poll_id( $post_id = 0 ): int {
+function get_post_poll_id( $post_id = 0 ) {
 	if( ! $post_id ){
 		$post_id = get_post()->ID;
 	}
 
-	return \DemocracyPoll\Admin\Post_Metabox::get_post_poll_id( (int) $post_id );
+	return Post_Metabox::get_post_poll_id( (int) $post_id );
 }
 
 /**
@@ -42,9 +46,7 @@ function democracy_poll( $id = 0, $before_title = '', $after_title = '', $from_p
  * @return string   Poll HTML code.
  */
 function get_democracy_poll( $poll_id = 0, $before_title = '', $after_title = '', $from_post = 0 ) {
-
-	$poll = new \DemPoll( $poll_id );
-
+	$poll = new Poll( $poll_id );
 	if( ! $poll->id ){
 		return 'Poll not found';
 	}
@@ -57,10 +59,10 @@ function get_democracy_poll( $poll_id = 0, $before_title = '', $after_title = ''
 		$new_in_posts = $poll->in_posts ? "$poll->in_posts,$from_post" : $from_post;
 		$new_in_posts = trim( $new_in_posts, ',' ); // Just in case.
 
-		$wpdb->update( $wpdb->democracy_q, [ 'in_posts' => $new_in_posts ], [ 'id' => $poll_id ] );
+		$wpdb->update( $wpdb->democracy_q, [ 'in_posts' => $new_in_posts ], [ 'id' => $poll->id ] );
 	}
 
-	return $poll->renderer->get_screen( 'vote', $before_title, $after_title );
+	return ( new Poll_Renderer( $poll ) )->render_poll( 'vote', $before_title, $after_title );
 }
 
 /**
@@ -73,9 +75,7 @@ function get_democracy_poll( $poll_id = 0, $before_title = '', $after_title = ''
  * @return string   Poll HTML code.
  */
 function get_democracy_poll_results( $poll_id = 0, $before_title = '', $after_title = '' ) {
-
-	$poll = new \DemPoll( $poll_id );
-
+	$poll = new Poll( $poll_id );
 	if( ! $poll->id ){
 		return '';
 	}
@@ -84,7 +84,7 @@ function get_democracy_poll_results( $poll_id = 0, $before_title = '', $after_ti
 		return __( 'Poll results hidden for now...', 'democracy-poll' );
 	}
 
-	return $poll->renderer->get_screen( 'voted', $before_title, $after_title );
+	return ( new Poll_Renderer( $poll ) )->render_poll( 'voted', $before_title, $after_title );
 }
 
 /**
@@ -222,7 +222,6 @@ function get_dem_polls( $args = [] ) {
 
 	$ORDER_BY = [];
 	if( ! $rg->orderby ){
-
 		if( null === $rg->active ){
 			$ORDER_BY['active'] = 'active DESC';
 		}
@@ -232,19 +231,16 @@ function get_dem_polls( $args = [] ) {
 
 		$ORDER_BY['id'] = 'id DESC';
 	}
-	else{
+	elseif( is_array( $rg->orderby ) ){
+		$ORDER_BY['array'] = $esc_orderby__fn( implode( ' ', $rg->orderby ) );
+	}
+	elseif( is_string( $rg->orderby ) ){
 
-		if( is_array( $rg->orderby ) ){
-			$ORDER_BY['array'] = $esc_orderby__fn( implode( ' ', $rg->orderby ) );
+		if( 'rand' === $rg->orderby ){
+			$ORDER_BY['rand'] = 'rand()';
 		}
-		elseif( is_string( $rg->orderby ) ){
-
-			if( 'rand' === $rg->orderby ){
-				$ORDER_BY['rand'] = 'rand()';
-			}
-			else{
-				$ORDER_BY['string'] = $esc_orderby__fn( $rg->orderby ) . ' ASC';
-			}
+		else{
+			$ORDER_BY['string'] = $esc_orderby__fn( $rg->orderby ) . ' ASC';
 		}
 	}
 
@@ -258,7 +254,7 @@ function get_dem_polls( $args = [] ) {
 	}
 
 	/**
-	 * Allows to modify the SQL clauses for getting polls.
+	 * Allows modifying the SQL clauses for getting polls.
 	 * This filter can be used to add custom WHERE conditions, ORDER BY clauses, or LIMIT.
 	 *
 	 * @param array $clauses  Array of SQL clauses.
@@ -281,7 +277,7 @@ function get_dem_polls( $args = [] ) {
 	$polls = [];
 	if( $rg->return === 'objects' ){
 		foreach( $poll_ids as $poll_id ){
-			$polls[] = new \DemPoll( $poll_id );
+			$polls[] = new Poll( $poll_id );
 		}
 
 		return $polls;
@@ -290,9 +286,9 @@ function get_dem_polls( $args = [] ) {
 	// HTML
 	$out = [];
 	foreach( $poll_ids as $poll_id ){
-		$poll = new \DemPoll( $poll_id );
+		$poll = new Poll( $poll_id );
 
-		$elm_html = $poll->renderer->get_screen( $rg->screen, $rg->before_title, $rg->after_title );
+		$elm_html = ( new Poll_Renderer( $poll ) )->render_poll( $rg->screen, $rg->before_title, $rg->after_title );
 
 		// in posts
 		if(

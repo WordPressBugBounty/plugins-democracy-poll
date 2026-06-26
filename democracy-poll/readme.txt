@@ -117,26 +117,28 @@ Yes. Deleting the plugin removes all of its options and data.
 9. Text customization
 
 
+== Upgrade Notice ==
 
-== Backward Compatibility Notes ==
-
-= 6.1.0 =
-* CHG: Removed the `DEM_VER` constant; use `DemocracyPoll\plugin()->ver` instead.
-* CHG: Removed the `DEMOC_URL` constant; use `DemocracyPoll\plugin()->url` instead. Note that the trailing slash was removed.
-* CHG: Removed the `DEMOC_PATH` constant; use `DemocracyPoll\plugin()->dir` instead. Note that the trailing slash was removed.
-* CHG: Removed the `DEMOC_MAIN_FILE` constant.
-* CHG: Significantly refactored the `DemPoll` class. Some properties moved to the `Poll_Renderer` and `Poll_Service` classes.
-
-= 6.0.4 =
-* Requires PHP 7.4+
-
-= 6.0.0 =
-* Requires PHP 7.0+
-* If you used plugin classes directly in your code, you may need to update them to match the new class names
-
+See `COMPAT: ***` messages in the changelog below for any backward compatibility changes that may require code updates if you use the plugin's public API or properties directly in your code.
 
 
 == Changelog ==
+
+See `COMPAT: ***` messages in the changelog below for any backward compatibility changes that may require code updates if you use the plugin's public API or properties directly in your code.
+
+= 6.4.0 =
+* NEW: Added a global setting to sort order for answers on the results screen.
+* FIX: Shortcode `[democracy id=last]` for last poll did not work correctly in some cases. See [request](https://wordpress.org/support/topic/shortcode-to-last-poll-not-working/)
+* FIX: Users with plugin access roles could not create new polls. See [request](https://wordpress.org/support/topic/dempollget_db_data-poll-fails-when-editor-tries-to-add-new-poll-6-1-1/)
+* FIX: There was no way to add custom answer if "Hide vote button" option is on, and it is non-multiple poll with the revote option enabled.
+* FIX: Small bug when allowing users to add their own answers.
+* CHG: Max poll height options disabled by default.
+* IMP: Refresh poll edit form UI.
+* IMP: Store votes for all polls in one cookie instead of creating a separate cookie per poll.
+* COMPAT: `DemPoll::$dbdata` property removed. Use `DemPoll` props instead.
+* COMPAT: `DemPoll` object renamed to `\DemocracyPoll\Poll`. Old DemPoll class name remains available via PHP class alias, but some public properties were removed/changed. So you may need to update your code if you use `DemPoll` or it's properties directly.
+* COMPAT: `Poll_Service` class removed as well as `DemPoll::$service` property. Use methods of new `Poll_Cookies`, `Poll_Voting_Service`, `Poll_Logs` instead.
+* COMPAT: Custom HTML returned by the `dem_vote_screen` or `dem_result_screen` filters must include the new `dem_*_js` classes used as JavaScript hooks.
 
 = 6.3.1 =
 * FIX: Restored the Text Customization settings page after a previous refactor.
@@ -171,11 +173,11 @@ Yes. Deleting the plugin removes all of its options and data.
 * FIX: esc_attr() added for inline js to fix possible bugs on some servers.
 
 = 6.1.0 =
-* CHG: Removed the `DEM_VER` constant; use `DemocracyPoll\plugin()->ver` instead.
-* CHG: Removed the `DEMOC_URL` constant; use `DemocracyPoll\plugin()->url` instead. Note that the trailing slash was removed.
-* CHG: Removed the `DEMOC_PATH` constant; use `DemocracyPoll\plugin()->dir` instead. Note that the trailing slash was removed.
-* CHG: Removed the `DEMOC_MAIN_FILE` constant.
-* IMP: Significantly refactored `DemPoll` by decomposing it into smaller classes, including the new `Poll_Renderer` and `Poll_Service` classes.
+* COMPAT: Removed the `DEM_VER` constant; use `DemocracyPoll\plugin()->ver` instead.
+* COMPAT: Removed the `DEMOC_URL` constant; use `DemocracyPoll\plugin()->url` instead. Note that the trailing slash was removed.
+* COMPAT: Removed the `DEMOC_PATH` constant; use `DemocracyPoll\plugin()->dir` instead. Note that the trailing slash was removed.
+* COMPAT: Removed the `DEMOC_MAIN_FILE` constant.
+* COMPAT: Significantly refactored `DemPoll` by decomposing it into smaller classes, including the new `Poll_Renderer` and `Poll_Service` classes.
 * FIX: PHPStan fixes and improvements.
 * IMP: Updated the POT and PO translation files and added `.l10n.php` files for better performance.
 
@@ -194,6 +196,7 @@ Yes. Deleting the plugin removes all of its options and data.
 * IMP: Minor improvements.
 * UPD: Tested up to WordPress 6.8.
 * UPD: Updated js-cookie from 2.2.0 to 3.0.5.
+* COMPAT: Requires PHP 7.4+
 
 = 6.0.3 =
 * FIX: Poll widget did not work correctly if "select random poll" option was set.
@@ -206,15 +209,15 @@ Yes. Deleting the plugin removes all of its options and data.
 * IMP: Minor improvements.
 
 = 6.0.0 =
+* COMPAT: Minimal PHP version requirement set to 7.0.
+* COMPAT: Class `Democracy_Poll` renamed to `Plugin` and moved under namespace.
+* COMPAT: Functions `democr()` and `demopt()` renamed to `\DemocracyPoll\plugin()` and `\DemocracyPoll\options()`.
+* COMPAT: Most classes moved under `DemocracyPoll` namespace.
 * FIX: Unable to delete all answers or create a democracy poll without a starting answer.
-* CHG: Minimal PHP version requirement set to 7.0.
-* CHG: Class `Democracy_Poll` renamed to `Plugin` and moved under namespace.
-* CHG: Functions `democr()` and `demopt()` renamed to `\DemocracyPoll\plugin()` and `\DemocracyPoll\options()`.
-* CHG: Most classes moved under `DemocracyPoll` namespace.
-* CHG: DemPoll object improvements: magic properties replaced with real ones.
 * FIX: `democracy_shortcode` bug.
 * FIX: Not logged-in user logs now get saved with user_id=0 and IP (not just IP).
 * FIX: `Regenerate_democracy_css` fixes. Empty answer PHP notice fix.
+* IMP: `DemPoll` object improvements: magic properties replaced with real ones.
 * IMP: "Admin" classes refactored.
 * IMP: Admin Pages code refactored.
 * IMP: Classes autoloader implemented.

@@ -18,15 +18,18 @@ if( ! $demcss['base_css'] && $additional ){
 }
 
 ?>
-<div class="democr_options dempage_design">
+<?= Admin_Page::info_sidebar() ?>
+
+<div class="demoptions dempage-design">
 	<?php $this::polls_preview( true ); ?>
 
 	<form action="" method="post">
 		<?php wp_nonce_field( 'dem_adminform', '_demnonce' ); ?>
 
-		<ul class="group">
-			<li class="title"><?= esc_html__( 'Choose Theme', 'democracy-poll' ); ?></li>
-			<li class="block selectable_els">
+		<!-- Choose theme -->
+		<section class="demoptions__group">
+			<div class="title"><?= esc_html__( 'Choose Theme', 'democracy-poll' ) ?></div>
+			<div class="demoptions__block selectable_els">
 				<label>
 					<input type="radio" name="dem[css_file_name]"
 					       value="" <?php checked( $opt->css_file_name, '' ) ?> />
@@ -44,27 +47,89 @@ if( ! $demcss['base_css'] && $additional ){
 					<?php
 				}
 				?>
-			</li>
-		</ul>
+			</div>
+		</section>
+
+		<!-- checkbox, radio -->
+		<section class="demoptions__group">
+			<div class="title">checkbox, radio</div>
+			<div class="demoptions__block check_radio_wrap selectable_els" style="display:flex; align-items:center; gap:3rem;">
+				<div>
+					<label>
+						<input type="radio" value=""
+						       name="dem[checkradio_fname]" <?php checked( $opt->checkradio_fname, '' ) ?>>
+						<span class="radio_content">
+								<div style="padding:.5rem;"></div>
+								<?= esc_html__( 'No (default)', 'democracy-poll' ); ?>
+							</span>
+					</label>
+				</div>
+				<?php
+				$data = [];
+				foreach( glob( plugin()->dir . '/assets/styles/checkbox-radio/*' ) as $file ){
+					if( is_dir( $file ) ){
+						continue;
+					}
+					$data[ basename( $file ) ] = $file;
+				}
+				foreach( $data as $fname => $file ){
+					$styles = file_get_contents( $file );
+
+					// Adjust styles.
+					$unique = 'unique' . rand( 1, 9999 ) . '_';
+					$styles = str_replace( '.dem__radio_label', ".{$unique}dem__radio_label", $styles );
+					$styles = str_replace( '.dem__checkbox_label', ".{$unique}dem__checkbox_label", $styles );
+					$styles = str_replace( '.dem__radio', ".{$unique}dem__radio", $styles );
+					$styles = str_replace( '.dem__checkbox', ".{$unique}dem__checkbox", $styles );
+					$styles = str_replace( ':disabled', ':disabled__', $styles ); // Disable the :disabled selector.
+					?>
+					<div>
+						<style><?= $styles ?></style>
+						<label>
+							<input type="radio" value="<?= $fname ?>" name="dem[checkradio_fname]" <?= checked( $opt->checkradio_fname, $fname, 0 ) ?>>
+							<span class="radio_content">
+								<div style="display:flex; gap:.5em;">
+									<div class="<?= $unique ?>dem__radio_label">
+										<input disabled class="<?= $unique ?>dem__radio demdummy" type="radio" /><span class="dem__spot"></span>
+									</div>
+									<div class="<?= $unique ?>dem__radio_label">
+										<input disabled class="<?= $unique ?>dem__radio demdummy" checked type="radio" /><span class="dem__spot"></span>
+									</div>
+									<div class="<?= $unique ?>dem__checkbox_label">
+										<input disabled class="<?= $unique ?>dem__checkbox demdummy" type="checkbox" /><span class="dem__spot"></span>
+									</div>
+									<div class="<?= $unique ?>dem__checkbox_label demdummy">
+										<input disabled class="<?= $unique ?>dem__checkbox" checked type="checkbox" /><span class="dem__spot"></span>
+									</div>
+								</div>
+
+								<?= $fname ?>
+							</span>
+						</label>
+					</div>
+					<?php
+				}
+				?>
+			</div>
+		</section>
 
 		<!-- Other settings -->
-		<ul class="group">
-			<li class="title"><?= esc_html__( 'Other settings', 'democracy-poll' ); ?></li>
-			<li class="block">
-				<input type="text" min="-1" style="width:7em;" name="dem[answs_max_height]" value="<?= esc_attr( $opt->answs_max_height ) ?>">
-				<?= esc_html__( 'Max height of the poll (in pixels if no unit is set). When a poll has many answers, collapsing it improves readability. `-1` - disables this option. Default: 500.', 'democracy-poll' ) ?>
-			</li>
-			<li class="block">
+		<section class="demoptions__group">
+			<div class="title"><?= esc_html__( 'Other settings', 'democracy-poll' ) ?></div>
+			<div class="demoptions__block">
+				<input type="text" style="width:7em;" name="dem[answs_max_height]" value="<?= esc_attr( $opt->answs_max_height ) ?>">
+				<?= esc_html__( 'Max poll height (in em, rem, px, ...). Leave empty to disable.', 'democracy-poll' ) ?>
+			</div>
+			<div class="demoptions__block">
 				<input type="number" min="0" style="width:7em;" name="dem[anim_speed]" value="<?= esc_attr( $opt->anim_speed ) ?>">
 				<?= esc_html__( 'Animation speed (in milliseconds).', 'democracy-poll' ) ?>
-			</li>
-
-		</ul>
+			</div>
+		</section>
 
 		<!--Progress line-->
-		<ul class="group">
-			<li class="title"><?= esc_html__( 'Progress line', 'democracy-poll' ); ?></li>
-			<li class="block">
+		<section class="demoptions__group">
+			<div class="title"><?= esc_html__( 'Progress line', 'democracy-poll' ) ?></div>
+			<div class="demoptions__block">
 				<p><?= esc_html__( 'How to fill (paint) the progress of each answer:', 'democracy-poll' ) ?></p>
 				<label style="margin-left:1em;">
 					<input type="radio" name="dem[graph_from_total]"
@@ -113,86 +178,20 @@ if( ! $demcss['base_css'] && $additional ){
 					       value="<?= (int) $opt->line_anim_speed ?>"/>
 					<?= esc_html__( 'Progress line animation effect speed (default 1500). Set 0 to disable animation.', 'democracy-poll' ) ?>
 				</label>
-
-			</li>
-		</ul>
-
-		<!-- checkbox, radio -->
-		<ul class="group">
-			<li class="title">checkbox, radio</li>
-			<li class="block check_radio_wrap selectable_els">
-				<div style="float:left;">
-					<label style="padding:0em 3em 1em;">
-						<input type="radio" value=""
-						       name="dem[checkradio_fname]" <?php checked( $opt->checkradio_fname, '' ) ?>>
-						<span class="radio_content">
-								<div style="padding:1.25em;"></div>
-								<?= esc_html__( 'No (default)', 'democracy-poll' ); ?>
-							</span>
-					</label>
-				</div>
-				<?php
-				$data = [];
-				foreach( glob( plugin()->dir . '/assets/styles/checkbox-radio/*' ) as $file ){
-					if( is_dir( $file ) ){
-						continue;
-					}
-					$data[ basename( $file ) ] = $file;
-				}
-				foreach( $data as $fname => $file ){
-					$styles = file_get_contents( $file );
-
-					// Adjust styles.
-					$unique = 'unique' . rand( 1, 9999 ) . '_';
-					$styles = str_replace( '.dem__radio_label', ".{$unique}dem__radio_label", $styles );
-					$styles = str_replace( '.dem__checkbox_label', ".{$unique}dem__checkbox_label", $styles );
-					$styles = str_replace( '.dem__radio', ".{$unique}dem__radio", $styles );
-					$styles = str_replace( '.dem__checkbox', ".{$unique}dem__checkbox", $styles );
-					$styles = str_replace( ':disabled', ':disabled__', $styles ); // Disable the :disabled selector.
-
-					?>
-					<div style="float:left;">
-						<style><?= $styles ?></style>
-						<label style="padding:0 3em 1em;">
-							<input type="radio" value="<?= $fname ?>" name="dem[checkradio_fname]" <?= checked( $opt->checkradio_fname, $fname, 0 ) ?>>
-							<span class="radio_content">
-										<div style="padding:.5em;">
-											<label class="<?= $unique ?>dem__radio_label">
-												<input disabled class="<?= $unique ?>dem__radio demdummy" type="radio" /><span class="dem__spot"></span>
-											</label>
-											<label class="<?= $unique ?>dem__radio_label">
-												<input disabled class="<?= $unique ?>dem__radio demdummy" checked type="radio" /><span class="dem__spot"></span>
-											</label>
-											<label class="<?= $unique ?>dem__checkbox_label">
-												<input disabled class="<?= $unique ?>dem__checkbox demdummy" type="checkbox" /><span class="dem__spot"></span>
-											</label>
-											<label class="<?= $unique ?>dem__checkbox_label demdummy">
-												<input disabled class="<?= $unique ?>dem__checkbox" checked type="checkbox" /><span class="dem__spot"></span>
-											</label>
-										</div>
-
-										<?= $fname ?>
-									<span>
-						</label>
-
-					</div>
-					<?php
-				}
-				?>
-			</li>
-		</ul>
+			</div>
+		</section>
 
 
 		<!--Button-->
-		<div class="group">
+		<section class="demoptions__group">
 			<div class="title">Button</div>
-			<div class="block buttons">
+			<div class="demoptions__block buttons">
 				<div class="btn_select_wrap selectable_els">
 					<label>
 						<input type="radio" value="" name="dem[css_button]" <?php checked( $opt->css_button, '' ) ?> />
 						<span class="radio_content">
-									<input type="button" value="<?= esc_attr__( 'No (default)', 'democracy-poll' ); ?>"/>
-								</span>
+							<input type="button" value="<?= esc_attr__( 'No (default)', 'democracy-poll' ); ?>"/>
+						</span>
 					</label>
 
 					<?php
@@ -236,16 +235,15 @@ if( ! $demcss['base_css'] && $additional ){
 							<input type="radio" value="<?= esc_attr( $fname ) ?>"
 							       name="dem[css_button]" <?php checked( $opt->css_button, $fname ) ?> />
 							<span class="radio_content">
-										<input type="button" value="<?= esc_attr( $fname ) ?>"
-										       class="<?= $button_class ?>">
-									</span>
+								<input type="button" value="<?= esc_attr( $fname ) ?>" class="<?= $button_class ?>">
+							</span>
 						</label>
 						<?php
 					}
 					?>
 					<br><br>
 					<em>
-						<?= esc_html__( 'The colors correctly affects NOT for all buttons. You can change styles completely in "additional styles" field bellow.', 'democracy-poll' ) ?>
+						<?= esc_html__( 'These colors may not affect all button styles. You can fully customize button styles in the "Additional CSS styles" field below.' , 'democracy-poll' ) ?>
 					</em>
 				</div>
 
@@ -306,13 +304,13 @@ if( ! $demcss['base_css'] && $additional ){
 
 			</div>
 
-		</div>
+		</section>
 
 
 		<!-- AJAX loader -->
-		<div class="group">
+		<section class="demoptions__group">
 			<div class="title">Loader</div>
-			<div class="block loaders" style="text-align:center;">
+			<div class="demoptions__block loaders" style="text-align:center;">
 				<div class="selectable_els">
 					<label class="lo_item" style="display: block; height:30px;">
 						<input type="radio" value="" name="dem[loader_fname]" <?php checked( $opt->loader_fname, '' ) ?>>
@@ -357,54 +355,53 @@ if( ! $demcss['base_css'] && $additional ){
 				</div>
 
 				<em>
-					<?= esc_html__( 'AJAX Loader. If choose "NO", loader replaces by dots "..." which appends to a link/button text. SVG images animation don\'t work in IE 11 or lower, other browsers are supported at  90% (according to caniuse.com statistics).', 'democracy-poll' ) ?>
+					<?= esc_html__( 'AJAX Loader. If you choose "NO", loader is replaced by dots "..." which are appended to a link/button text. SVG images animations don\'t work in IE 11 or lower, other browsers are supported at 90% (according to caniuse.com statistics).', 'democracy-poll' ) ?>
 				</em>
 
 				<input class="iris_color fill" name="dem[loader_fill]" type="text" value="<?= $opt->loader_fill ?>">
 
 			</div>
 
-		</div>
+		</section>
 
 		<!-- Custom styles -->
-		<ul class="group">
-			<li class="title"><?= esc_html__( 'Custom/Additional CSS styles', 'democracy-poll' ) ?></li>
-
-			<li class="block" style="width:98%;">
+		<section class="demoptions__group">
+			<div class="title"><?= esc_html__( 'Custom/Additional CSS styles', 'democracy-poll' ) ?></div>
+			<div class="demoptions__block" style="width:98%;">
 				<p>
 					<i><?php
-						echo esc_html__( 'In this field you can add some additional css properties or completely replace current css theme. Write here css and it will be added at the bottom of current Democracy css. To complete replace styles, check "No theme" and describe all styles.', 'democracy-poll' );
-						echo esc_html__( 'This field cleaned manually, if you reset options of this page or change/set another theme, the field will not be touched.', 'democracy-poll' );
+						echo esc_html__( 'In this field you can add some additional css properties or completely replace current css theme. Write here css and it will be added at the bottom of current Democracy css. To completely replace styles, check "No theme" and describe all styles.', 'democracy-poll' );
+						echo esc_html__( 'This field must be cleared manually, if you reset options of this page or change/set another theme, the field will not be touched.', 'democracy-poll' );
 						?></i>
 				</p>
 				<textarea name="additional_css" style="width:100%; min-height:50px; height:<?= $additional ? '300px' : '50px' ?>;"><?= esc_textarea( $additional ) ?></textarea>
-			</li>
-		</ul>
+			</div>
+		</section>
 
 		<!-- Connected styles -->
 		<p style="margin:2em 0; margin-top:5em; position:fixed; bottom:0; z-index:99;">
 			<input type="submit" name="dem_save_design_options" class="button-primary"
-			       value="<?= esc_attr__( 'Save All Changes', 'democracy-poll' ) ?>"
+		       value="<?= esc_attr__( 'Save All Changes', 'democracy-poll' ) ?>"
 			>
 
 			<input type="submit" name="dem_reset_design_options" class="button"
-			       value="<?= esc_attr__( 'Reset Options', 'democracy-poll' ) ?>"
-			       onclick="return confirm('<?= esc_attr__( 'are you sure?', 'democracy-poll' ) ?>');"
-			       style="margin-left:4em;"
+		       value="<?= esc_attr__( 'Reset Options', 'democracy-poll' ) ?>"
+		       onclick="return confirm('<?= esc_attr__( 'are you sure?', 'democracy-poll' ) ?>');"
+		       style="margin-left:4em;"
 			>
 		</p>
 
-		<ul class="group">
-			<li class="title"><?= esc_html__( 'All CSS styles that uses now', 'democracy-poll' ) ?></li>
-			<li class="block">
+		<section class="demoptions__group">
+			<div class="title"><?= esc_html__( 'All CSS styles currently in use', 'democracy-poll' ) ?></div>
+			<div class="demoptions__block">
 				<script>
 					function select_kdfgu( that ){
 						var sel = ( !! document.getSelection) ? document.getSelection() : ( !! window.getSelection) ? window.getSelection() : document.selection.createRange().text;
 						if( sel == '' ) that.select();
 					}
 				</script>
-				<em style="__opacity: 0.8;">
-					<?= esc_html__( 'It\'s all collected css styles: theme, button, options. You can copy this styles to the "Custom/Additional CSS styles:" field, disable theme and change copied styles by itself.', 'democracy-poll' ) ?>
+				<em>
+					<?= esc_html__( 'These are all collected CSS styles: theme, button, options. You can copy these styles to the "Custom/Additional CSS styles:" field, disable theme and edit them manually.', 'democracy-poll' ) ?>
 				</em>
 				<textarea onmouseup="select_kdfgu(this);" onfocus="this.style.height = '700px';"
 				          onblur="this.style.height = '100px';" readonly="true"
@@ -413,12 +410,12 @@ if( ! $demcss['base_css'] && $additional ){
 					?></textarea>
 
 				<p>
-					<?= esc_html__( 'Minified version (uses to include it in HTML)', 'democracy-poll' ) ?>
+					<?= esc_html__( 'Minified version (used to include it in HTML)', 'democracy-poll' ) ?>
 					<button type="button" onclick="const el = this.parentElement.nextElementSibling; el.hidden = ! el.hidden">show</button>
 				</p>
 				<pre hidden style="width:auto; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; padding: 1em; background:rgba(0 0 0 / .1)"><?= $demcss['minify'] ?></pre>
-			</li>
-		</ul>
+			</div>
+		</section>
 
 	</form>
 

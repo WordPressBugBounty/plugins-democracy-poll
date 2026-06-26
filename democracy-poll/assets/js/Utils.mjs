@@ -1,4 +1,5 @@
-import State from './State.mjs'
+import Config from './Config.mjs'
+import PollState from './PollState.mjs'
 
 export default class Utils {
 
@@ -9,6 +10,7 @@ export default class Utils {
 		}
 
 		const clone = el.cloneNode( true )
+		clone.querySelectorAll( 'input, select, textarea, button' ).forEach( el => el.removeAttribute( 'name' ) ) // make not clickable
 		Object.assign( clone.style, {
 			height    : 'auto', maxHeight: 'none',
 			position  : 'absolute', left: '-9999px', top: '0', width: window.getComputedStyle( el ).width,
@@ -32,7 +34,7 @@ export default class Utils {
 		const newH = Utils.detectRealHeight( el )
 
 		if( doAnimation ){
-			const duration = State.animSpeed || 0
+			const duration = Config.animSpeed || 0
 			Utils.animateHeight( el, newH, duration )
 		}
 		else{
@@ -49,12 +51,13 @@ export default class Utils {
 	 * @param {HTMLElement} screen
 	 */
 	static setAnswsMaxHeight( screen ){
-		if( State.answMaxHeight === '-1' || State.answMaxHeight === '0' || ! State.answMaxHeight ){
+		const poll = screen.closest( Config.mainSel )
+		const maxHeight = PollState.get( poll ).answsMaxHeight
+		if( ! maxHeight ){
 			return
 		}
 
-		const el = screen.querySelector( '.dem-vote, .dem-answers' )
-		const maxHeight = State.answMaxHeight
+		const el = screen.querySelector( '.dem_answers_list_js' )
 		const maxHeightPx = Utils.heightToPixels( maxHeight, el )
 
 		el.style.maxHeight = 'none'
@@ -70,7 +73,7 @@ export default class Utils {
 		if( diff > 100 ){
 			el.style.position = 'relative'
 
-			const overlay = Utils.newEl( '<span class="dem__collapser"><span class="arr"></span></span>' )
+			const overlay = Utils.newEl( '<span class="dem__collapser dem_collapser_js"><span class="arr"></span></span>' )
 			el.append( overlay )
 
 			const fn__expand = () => {
@@ -114,7 +117,7 @@ export default class Utils {
 					delete screen.dataset['expanded']
 					screen.style.height = 'auto'
 					el.style.overflowY = 'hidden'
-					Utils.animateHeight( el, maxHeightPx, State.animSpeed, () => {
+					Utils.animateHeight( el, maxHeightPx, Config.animSpeed, () => {
 						screen.style.height = Utils.detectRealHeight( screen ) + 'px'
 					} )
 				}
@@ -127,14 +130,13 @@ export default class Utils {
 
 					screen.dataset['expanded'] = 'true'
 					screen.style.height = 'auto'
-					Utils.animateHeight( el, newH, State.animSpeed, () => {
+					Utils.animateHeight( el, newH, Config.animSpeed, () => {
 						screen.style.height = Utils.detectRealHeight( screen ) + 'px'
 						el.style.overflowY = 'visible'
 					} )
 				}
 			} )
 		}
-
 	}
 
 	static heightToPixels(cssValue, forEl) {
@@ -152,54 +154,101 @@ export default class Utils {
 		}
 	}
 
+	static #maxAnswLimitBound = false
+
 	// max answers limit - limit for multi-answer selection
 	static maxAnswLimitInit(){
-		if( Utils.maxAnswLimitBound ){
+		if( Utils.#maxAnswLimitBound ){
 			return
 		}
-		Utils.maxAnswLimitBound = true
+		Utils.#maxAnswLimitBound = true
 
-		document.addEventListener( 'change', function( event ){
+		const eventHanlder = ( event ) => {
 			const target = event.target
-			if( ! (target instanceof HTMLInputElement) || target.type !== 'checkbox' ){
+			if( ! (target instanceof HTMLInputElement)
+				|| ( event.type === 'change' && target.type !== 'checkbox' )
+				|| ( event.type === 'input' && ! target.matches( Config.userAnswerSel ) )
+			){
 				return
 			}
 
-			const poll = target.closest( State.mainSel )
-			if( ! poll ){
-				return
-			}
+			const screen = target.closest( Config.screenSel )
+			screen && Utils.updateMaxAnswLimit( screen )
+		}
 
-			poll._maxAnsws ??= parseInt( JSON.parse( poll.dataset['opts'] ).max_answs ) || 0
-			if( ! poll._maxAnsws ){
-				return
-			}
+		document.addEventListener( 'change', eventHanlder )
+		document.addEventListener( 'input', eventHanlder )
+	}
 
-			const screen = target.closest( State.screenSel )
-			if( ! screen ){
-				return
-			}
+	static updateMaxAnswLimit( screen ){
+		const {
+			maxAnsws,
+			checkedCount,
+			userAnswerInput,
+			hasUserAnswer,
+			isMaxReached
+		} = Utils.maxAnswLimitData( screen )
+		if( ! maxAnsws ){
+			return
+		}
 
-			const checkboxes = screen.querySelectorAll( 'input[type="checkbox"]' )
-			const checkedCount = screen.querySelectorAll( 'input[type="checkbox"]:checked' ).length
+		const checkboxes = screen.querySelectorAll( 'input[type="checkbox"]' )
+		if( ! checkboxes.length ){
+			return
+		}
 
-			// if reached max, disable unchecked
-			if( checkedCount >= poll._maxAnsws ){
-				checkboxes.forEach( checkbox => {
-					if( ! checkbox.checked ){
-						checkbox.disabled = true
-						checkbox.closest( 'li' ).classList.add( 'dem-disabled' )
-					}
-				} )
-			}
-			// else re-enable all
-			else{
-				checkboxes.forEach( checkbox => {
-					checkbox.disabled = false
-					checkbox.closest( 'li' ).classList.remove( 'dem-disabled' )
-				} )
-			}
+		checkboxes.forEach( checkbox => {
+			const shouldDisable = isMaxReached && ! checkbox.checked
+			checkbox.disabled = shouldDisable
+			checkbox.closest( '.dem_answer_item_js' )?.classList.toggle( 'dem-disabled', shouldDisable )
 		} )
+
+		const userAnswerItem = screen.querySelector( '.dem_add_answer_item_js' )
+		if( userAnswerInput ){
+			const shouldDisableInput = ! hasUserAnswer && checkedCount >= maxAnsws
+			userAnswerInput.disabled = shouldDisableInput
+			userAnswerItem?.classList.toggle( 'dem-disabled', shouldDisableInput )
+
+			return
+		}
+
+		if( userAnswerItem ){
+			const shouldDisableLink = checkedCount >= maxAnsws
+			userAnswerItem.classList.toggle( 'dem-disabled', shouldDisableLink )
+
+			const link = userAnswerItem.querySelector( '.dem_add_answer_link_js' )
+			if( link ){
+				if( shouldDisableLink ){
+					link.setAttribute( 'aria-disabled', 'true' )
+					link.setAttribute( 'tabindex', '-1' )
+				}
+				else{
+					link.removeAttribute( 'aria-disabled' )
+					link.removeAttribute( 'tabindex' )
+				}
+			}
+		}
+	}
+
+	static maxAnswLimitData( screen ){
+		const poll = screen.closest( Config.mainSel )
+		const maxAnsws = PollState.get( poll ).maxAnsws
+		if( ! maxAnsws ){
+			return {}
+		}
+
+		const checkedCount = screen.querySelectorAll( 'input[type="checkbox"]:checked' ).length
+		const userAnswerInput = screen.querySelector( Config.userAnswerSel )
+		const hasUserAnswer = !! userAnswerInput?.value.trim()
+		const isMaxReached = (checkedCount + (hasUserAnswer ? 1 : 0)) >= maxAnsws
+
+		return {
+			maxAnsws,
+			checkedCount,
+			userAnswerInput,
+			hasUserAnswer,
+			isMaxReached,
+		}
 	}
 
 	static demShake( el ){
@@ -232,7 +281,7 @@ export default class Utils {
 			el[isInput ? 'value' : 'innerHTML'] += '.'
 		}
 
-		State.loaderTmr = setTimeout( () => Utils.loadingDots( el ), 200 )
+		Config.loaderTmr = setTimeout( () => Utils.loadingDots( el ), 200 )
 	}
 
 	static resetHeight( el ){

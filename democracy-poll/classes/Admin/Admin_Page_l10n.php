@@ -7,6 +7,9 @@ use function DemocracyPoll\plugin;
 
 class Admin_Page_l10n implements Admin_Subpage_Interface {
 
+	private const OLD_VOTES_PERCENT_TEXT = '%s - %s%% of all votes';
+	private const VOTES_PERCENT_TEXT = '{votes} - {percent}% of all votes';
+
 	private Admin_Page $admpage;
 
 	public function __construct( Admin_Page $admin_page ){
@@ -47,57 +50,8 @@ class Admin_Page_l10n implements Admin_Subpage_Interface {
 		}
 
 		echo $this->admpage->subpages_menu();
-		?>
-		<div class="democr_options dempage_l10n">
 
-			<?php Admin_Page_Design::polls_preview(); ?>
-
-			<form method="POST" action="">
-				<?php wp_nonce_field( 'dem_adminform', '_demnonce' ); ?>
-				<table class="wp-list-table widefat fixed posts">
-					<thead>
-						<tr>
-							<th><?= __( 'Original', 'democracy-poll' ) ?></th>
-							<th><?= __( 'Your variant', 'democracy-poll' ) ?></th>
-						</tr>
-					</thead>
-					<tbody id="the-list">
-					<?php
-					$i = 0;
-					$_l10n = get_option( 'democracy_l10n' );
-					self::remove_gettext_filter();
-					foreach( self::get_front_texts() as $str ){
-						$i++;
-						$mo_str = _x( $str, 'front', 'democracy-poll' );
-
-						$l10ed_str = ( ! empty( $_l10n[ $str ] ) && $_l10n[ $str ] !== $mo_str ) ? $_l10n[ $str ] : '';
-
-						?>
-						<tr class="<?= ( $i % 2 ? 'alternate' : '' ) ?>">
-							<td><?= esc_html( $mo_str ) ?></td>
-							<td>
-								<input type="text" name="l10n[<?= esc_attr( $str ) ?>]" value="<?= esc_attr( $l10ed_str ) ?>"
-								       style="width:100%;"  />
-							</td>
-						</tr>
-						<?php
-					}
-					self::add_gettext_filter();
-					?>
-					</tbody>
-				</table>
-
-				<p>
-					<input class="button-primary" type="submit" name="dem_save_l10n"
-					       value="<?= esc_attr__( 'Save Text', 'democracy-poll' ) ?>">
-					<input class="button" type="submit" name="dem_reset_l10n"
-					       value="<?= esc_attr__( 'Reset Options', 'democracy-poll' ) ?>">
-				</p>
-
-			</form>
-
-		</div>
-		<?php
+		require __DIR__ . '/tpl/l10n.php';
 	}
 
 	public function reset_l10n(): bool {
@@ -162,7 +116,7 @@ class Admin_Page_l10n implements Admin_Subpage_Interface {
 	public static function handle_front_l10n( $text_translated, $text = '', $context = '', $domain = '' ) {
 		static $l10n_opt;
 		if( $l10n_opt === null || 'clear_cache' === $text_translated ){
-			$l10n_opt = get_option( 'democracy_l10n' );
+			$l10n_opt = self::normalize_l10n_options( get_option( 'democracy_l10n' ) );
 		}
 
 		if( 'democracy-poll' === $domain && 'front' === $context && ! empty( $l10n_opt[ $text ] ) ){
@@ -170,6 +124,22 @@ class Admin_Page_l10n implements Admin_Subpage_Interface {
 		}
 
 		return $text_translated;
+	}
+
+	public static function normalize_l10n_options( $l10n_opt ): array {
+		$l10n_opt = is_array( $l10n_opt ) ? $l10n_opt : [];
+
+		if( empty( $l10n_opt[ self::VOTES_PERCENT_TEXT ] ) && ! empty( $l10n_opt[ self::OLD_VOTES_PERCENT_TEXT ] ) ){
+			$l10n_opt[ self::VOTES_PERCENT_TEXT ] = sprintf(
+				$l10n_opt[ self::OLD_VOTES_PERCENT_TEXT ],
+				'{votes}',
+				'{percent}'
+			);
+		}
+
+		unset( $l10n_opt[ self::OLD_VOTES_PERCENT_TEXT ] );
+
+		return $l10n_opt;
 	}
 
 }

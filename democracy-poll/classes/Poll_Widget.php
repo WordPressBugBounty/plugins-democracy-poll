@@ -2,21 +2,22 @@
 
 namespace DemocracyPoll;
 
+use DemocracyPoll\Admin\Post_Metabox;
 use DemocracyPoll\Helpers\Kses;
+use WP_Widget;
 
-class Poll_Widget extends \WP_Widget {
+class Poll_Widget extends WP_Widget {
 
 	public function __construct() {
 		// Instantiate the parent object. Creates option 'Poll_Widget'
-		parent::__construct( 'democracy',
-			__( 'Democracy Poll', 'democracy-poll' ),
+		parent::__construct( 'democracy', 'Democracy Poll',
 			[
 				'description' => __( 'Democracy Poll Widget', 'democracy-poll' )
 			]
 		);
 	}
 
-	// front end
+	// front
 	public function widget( $args, $instance ) {
 		global $post;
 
@@ -30,12 +31,12 @@ class Poll_Widget extends \WP_Widget {
 
 		if( $post && is_singular()
 		    && ! options()->post_metabox_off
-		    && ( $post_pid = \DemocracyPoll\Admin\Post_Metabox::get_post_poll_id( $post->ID ) )
+		    && ( $post_pid = Post_Metabox::get_post_poll_id( $post->ID ) )
 		){
-			$poll_id = $post_pid;
+			$poll_id = $post_pid; // $poll_id may be: int, 'last', 'rand'
 		}
 
-		$poll_object = \DemPoll::get_db_data( $poll_id ?: 'rand' ); // $poll_id may be: int, 'last', 'rand'
+		$poll_object = Poll_Storage::get_db_data( $poll_id ?: 'rand' ); // $poll_id may be: int, 'last', 'rand'
 
 		if( isset( $instance['questionIsTitle'] ) ){
 			echo $before_widget;
