@@ -1,9 +1,7 @@
 <?php
 namespace DemocracyPoll\Admin;
 
-use DemocracyPoll\Helpers\Helpers;
-use function DemocracyPoll\options;
-use function DemocracyPoll\plugin;
+use DemocracyPoll\Support\Helpers;
 
 /**
  * @var Admin_Page_Settings $this
@@ -11,7 +9,7 @@ use function DemocracyPoll\plugin;
 
 defined( 'ABSPATH' ) || exit;
 
-$opt = options();
+$opt = $this->options;
 ?>
 
 <?= Admin_Page::info_sidebar() ?>
@@ -24,11 +22,10 @@ $opt = options();
 			<div class="demoptions__block">
 				<label>
 					<input type="checkbox" value="1"
-					       name="dem[keep_logs]" <?php checked( $opt->keep_logs, 1 ) ?> />
-					<?= esc_html__( 'Log data & take visitor IP into consideration? (recommended)', 'democracy-poll' ) ?>
+					       name="dem[allow_same_ip_votes]" <?php checked( $opt->allow_same_ip_votes, 1 ) ?> />
+					<?= esc_html__( 'Allow multiple votes from the same IP address.', 'democracy-poll' ) ?>
 				</label>
-				<em><?= esc_html__( 'Saves voting data in the database. This enables the re-voting mechanism and prevents logged-in users from voting multiple times, or non-logged-in users from voting multiple times from the same IP address. If this option is disabled, voting is checked by cookies only.', 'democracy-poll' ) ?></em>
-				<em><?= esc_html__( 'INFO: If a user is logged in, their vote is checked by their WP account. If a user is not logged in, their IP address is checked. The downside of IP checks is that a site may be visited from an enterprise network with a shared IP address, so all users from that network are allowed to vote only once.', 'democracy-poll' ) ?></em>
+				<em><?= esc_html__( 'When enabled, guests sharing an IP address are distinguished by a browser fingerprint. Each browser can still vote only once. Logged-in users are always identified by their WordPress account.', 'democracy-poll' ) ?></em>
 			</div>
 
 			<div class="demoptions__block">
@@ -38,20 +35,16 @@ $opt = options();
 					<?= esc_html__( 'How many days to keep Cookies alive?', 'democracy-poll' ) ?>
 				</label>
 				<em>
-					<?= esc_html__( 'How many days the user\'s browser remembers the votes. Default: 365. Note: works together with IP log.', 'democracy-poll' ) ?>
+					<?= esc_html__( 'How many days the browser and server remember votes. Default: 365.', 'democracy-poll' ) ?>
 					<br>
 					<?= esc_html__( 'To set hours use float number - 0.04 = 1 hour.', 'democracy-poll' ) ?>
 				</em>
 			</div>
 
 			<div class="demoptions__block">
-				<label><?= esc_html__( 'HTML tags to wrap the poll title.', 'democracy-poll' ) ?></label><br>
-				<input type="text" size="35" value="<?= esc_attr( $opt->before_title ) ?>"
-				       name="dem[before_title]"/>
-				<i><?= esc_html__( 'poll\'s question', 'democracy-poll' ) ?></i>
-				<input type="text" size="15" value="<?= esc_attr( $opt->after_title ) ?>"
-				       name="dem[after_title]"/>
-				<em><?= wp_kses_post( __( 'Example: <code>&lt;h2&gt;</code> and <code>&lt;/h2&gt;</code>. Default: <code>&lt;strong class=&quot;dem-poll-title&quot;&gt;</code> & <code>&lt;/strong&gt;</code>.', 'democracy-poll' ) ) ?></em>
+				<label><?= esc_html__( 'Poll title HTML template.', 'democracy-poll' ) ?></label><br>
+				<input type="text" size="70" value="<?= esc_attr( $opt->title_markup ) ?>" name="dem[title_markup]"/>
+				<em><?= wp_kses_post( __( 'Use <code>{question}</code> where the poll question should appear. Default: <code>&lt;strong class=&quot;dem-poll-title&quot;&gt;{question}&lt;/strong&gt;</code>.', 'democracy-poll' ) ) ?></em>
 			</div>
 
 			<div class="demoptions__block">
@@ -162,7 +155,7 @@ $opt = options();
 					<input type="checkbox" value="1"
 					       name="dem[force_cachegear]" <?php checked( $opt->force_cachegear, 1 ) ?> />
 					<?php
-					[ $cache_status, $cache_style ] = plugin()->is_cachegear_on
+					[ $cache_status, $cache_style ] = $this->plugin->is_cachegear_on
 						? [ __( 'ON', 'democracy-poll' ), 'color:#05A800' ]
 						: [ __( 'OFF', 'democracy-poll' ), 'color:#FF1427' ];
 

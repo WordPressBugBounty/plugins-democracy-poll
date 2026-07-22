@@ -9,8 +9,9 @@ class Poll_Ajax {
 	private string $action;
 	private int    $poll_id;
 	private string $answer_ids;
+	private string $fingerprint;
 
-	public function __construct(){
+	public function __construct() {
 		$this->ajax_url = admin_url( 'admin-ajax.php' );
 	}
 
@@ -65,18 +66,22 @@ class Poll_Ajax {
 		$this->action = sanitize_text_field( $_POST['dem_act'] ?? '' );
 		$this->poll_id = (int) ( $_POST['dem_pid'] ?? 0 );
 		$this->answer_ids = wp_unslash( $_POST['answer_ids'] ?? '' );
+		$this->fingerprint = sanitize_text_field( $_POST['fingerprint'] ?? '' );
 	}
 
+	/** Mockable factory method */
 	protected function create_poll(): Poll {
 		return new Poll( $this->poll_id );
 	}
 
+	/** Mockable factory method */
 	protected function create_renderer( Poll $poll ): Poll_Renderer {
-		return new Poll_Renderer( $poll );
+		return container()->make( Poll_Renderer::class, [ 'poll' => $poll ] ); /** @see Poll_Renderer::__construct() */
 	}
 
-	protected function create_voting_service( Poll $poll ): Poll_Voting_Service {
-		return new Poll_Voting_Service( $poll );
+	/** Mockable factory method */
+	protected function create_voting_service( Poll $poll ): Poll_Voting {
+		return container()->make( Poll_Voting::class, [ 'poll' => $poll ] ); /** @see Poll_Voting::__construct() */
 	}
 
 	/**
@@ -87,7 +92,7 @@ class Poll_Ajax {
 		$render = $this->create_renderer( $poll );
 		$voting = $this->create_voting_service( $poll );
 
-		$voted = $voting->vote( $this->answer_ids );
+		$voted = $voting->vote( $this->answer_ids, $this->fingerprint );
 
 		if( is_wp_error( $voted ) ){
 			return $this->response(
@@ -110,7 +115,7 @@ class Poll_Ajax {
 		$render = $this->create_renderer( $poll );
 		$voting = $this->create_voting_service( $poll );
 
-		$voting->delete_vote();
+		$voting->delete_vote( $this->fingerprint );
 
 		return $this->response( $render->get_vote_screen() );
 	}
@@ -141,11 +146,15 @@ class Poll_Ajax {
 		$render = $this->create_renderer( $poll );
 
 		$ustate = $poll->user_state;
+		$ustate->poll_logs->set_fingerprint( $this->fingerprint );
 		if( $ustate->voted_for ){
 			$ustate->set_vote_cookie();
+			$screen_html = $render->not_show_results
+				? $render->get_vote_screen()
+				: $render->get_result_screen();
 
 			return $this->response(
-				'',
+				$screen_html,
 				'already_voted',
 				Poll_Renderer::already_voted_notice_message(),
 				$ustate->voted_for
@@ -163,7 +172,8 @@ class Poll_Ajax {
 		// Cache a missing vote for half a day to avoid repeating this check.
 		$ustate->set_not_voted_cookie();
 
-		return $this->response();
+		// Replace results shown from a stale vote cookie with the actual vote screen.
+		return $this->response( $render->get_vote_screen() );
 	}
 
 	private function response(

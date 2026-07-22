@@ -1,6 +1,6 @@
 === Democracy Poll ===
 Stable tag: trunk
-Tested up to: 7.0
+Tested up to: 7.0.2
 Contributors: Tkama
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -8,6 +8,8 @@ Tags: democracy, polls, vote, survey, review
 
 
 WordPress polls plugin with multiple-choice, custom answers, cache compatibility, widgets, and shortcodes.
+
+[Documentation](https://doiftrue.github.io/democracy-poll/)
 
 
 == Description ==
@@ -57,6 +59,10 @@ Democracy Poll is a modern version of the original, well-regarded plugin by the 
 
 Multisite support has been available since version 5.2.4.
 
+### Documentation ###
+
+See the [complete Democracy Poll documentation](https://doiftrue.github.io/democracy-poll/) for setup instructions, user guides, shortcode reference, and developer integration points.
+
 
 
 == Usage ==
@@ -93,7 +99,7 @@ In your theme file (e.g. `sidebar.php`), add:
 To show the poll archive:
 
 `
-<?php democracy_archives( $hide_active, $before_title, $after_title ); ?>
+<?php democracy_archives( [ 'title_markup' => '<h2>{question}</h2>' ] ); ?>
 `
 
 
@@ -125,6 +131,14 @@ See `COMPAT: ***` messages in the changelog below for any backward compatibility
 == Changelog ==
 
 See `COMPAT: ***` messages in the changelog below for any backward compatibility changes that may require code updates if you use the plugin's public API or properties directly in your code.
+
+= 6.5.0 =
+* NEW: Added an option allowing different guest browsers to vote from the same IP address. Repeat votes are identified by a lightweight browser fingerprint when enabled.
+* IMP: Vote logs are now always recorded and are the server-side source for repeat-vote checks and revoting.
+* COMPAT: Removed the `keep_logs` option. Sites that had it disabled will start recording vote logs; their new same-IP voting option is enabled during migration to preserve the previous repeat-vote behavior.
+* IMP: Combined the poll title wrapper settings into one HTML template using the `{question}` placeholder. Existing settings remain compatible.
+* IMP: Poll rendering functions now accept a single title markup argument containing `{question}`. Legacy before/after arguments remain supported.
+* COMPAT: Internal `Plugin::$msg`, `$initor`, `$admin`, and `$poll_ajax` properties were removed. Use `container()->get()` to access these services. The commonly used `Plugin::$opt` property remains available for backward compatibility.
 
 = 6.4.0 =
 * NEW: Added a global setting to sort order for answers on the results screen.

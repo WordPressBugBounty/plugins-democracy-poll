@@ -2,7 +2,7 @@
 
 namespace DemocracyPoll;
 
-use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Support\Kses;
 
 /**
  * Handles rendering the poll HTML for display on the front-end.
@@ -19,13 +19,17 @@ class Poll_Renderer {
 	public bool $not_show_results = false;
 
 	private Poll $poll;
+	private Plugin $plugin;
+	private Options $options;
 
-	public function __construct( Poll $poll ) {
+	public function __construct( Poll $poll, Plugin $plugin, Options $options ) {
 		$this->poll = $poll;
+		$this->plugin = $plugin;
+		$this->options = $options;
 
 		if(
 			$poll->open
-			&& ( ! $poll->show_results || options()->dont_show_results )
+			&& ( ! $poll->show_results || $this->options->dont_show_results )
 			&& ( ! is_admin() || wp_doing_ajax() )
 		){
 			$this->not_show_results = true;
@@ -35,12 +39,16 @@ class Poll_Renderer {
 	/**
 	 * Gets the poll HTML.
 	 *
+	 * @since 6.4.1 `$before_title`, `$after_title` parameters replaced with `$title_markup`
+	 *               Old Signature `render_poll( $show_screen, $before_title, $after_title )`.
+	 *
 	 * @param string $show_screen  Which screen to display: vote, voted, force_vote.
+	 * @param string $title_markup Poll title markup containing the {question} placeholder.
 	 *
 	 * @return string HTML. Empty string if poll is not found.
 	 */
-	public function render_poll( string $show_screen = 'vote', string $before_title = '', string $after_title = '' ): string {
-		$opt = options(); // simplify
+	public function render_poll( string $show_screen = 'vote', string $title_markup = '' ): string {
+		$opt = $this->options; // simplify
 		$poll = $this->poll; // simplify
 		if( ! $this->poll->id ){
 			return '';
@@ -53,22 +61,30 @@ class Poll_Renderer {
 
 		$this->in_archive = ( (int) ( $GLOBALS['post']->ID ?? 0 ) === (int) $opt->archive_page_id ) && is_singular();
 
-		$title_html = ( $before_title ?: $opt->before_title ) .
-		              Kses::kses_html( $poll->question ) .
-		              ( $after_title ?: $opt->after_title );
+		// Legacy signature: `render_poll( $show_screen, $before_title, $after_title )`.
+		$is_legacy_call = func_num_args() > 2 || ( $title_markup && ! str_contains( $title_markup, '{question}' ) );
+		if( $is_legacy_call ){
+			[ $def_before_title, $def_after_title ] = explode( '{question}', $opt->title_markup, 2 ) + [ '', '' ];
+			$before_title = $title_markup ?: $def_before_title;
+			$after_title  = ( func_get_args()[2] ?? '' ) ?: $def_after_title;
+			$title_markup = "$before_title{question}$after_title";
+		}
+
+		$title_html = str_replace( '{question}', Kses::kses_html( $poll->question ), $title_markup ?: $opt->title_markup );
 
 		// ! before get_cache_screens() because of filters
 		$poll_body_html = $this->get_poll_body( $show_screen );
 
 		// for page cache // not use caching mechanism in admin
-		$cache_screens = ( ! $this->in_archive && ! is_admin() && plugin()->is_cachegear_on )
+		$cache_screens = ( ! $this->in_archive && ! is_admin() && $this->plugin->is_cachegear_on )
 			? $this->get_cache_screens()
 			: '';
 
 		$opts_json = esc_attr( wp_json_encode( [
-			'pid'              => (int) $poll->id,
-			'max_answs'        => (int) ( $poll->multiple ?: 0 ),
-			'answs_max_height' => is_numeric( $opt->answs_max_height ) ? "{$opt->answs_max_height}px" : $opt->answs_max_height,
+			'pid'                 => (int) $poll->id,
+			'max_answs'           => (int) ( $poll->multiple ?: 0 ),
+			'answs_max_height'    => is_numeric( $opt->answs_max_height ) ? "{$opt->answs_max_height}px" : $opt->answs_max_height,
+			'allow_same_ip_votes' => (int) $opt->allow_same_ip_votes,
 		] ) );
 
 		return <<<HTML
@@ -156,10 +172,9 @@ class Poll_Renderer {
 		$ustate->voted_for = $saved_voted_for;
 		$ustate->has_voted = $saved_has_voted;
 
-		$is_keep_logs = options()->keep_logs ? 1 : 0;
 		return <<<HTML
 			<!--noindex-->
-			<div class="dem-cache-screens dem_cache_screens_js" style="display:none;" data-opt_logs="$is_keep_logs">$html</div>
+			<div class="dem-cache-screens dem_cache_screens_js" style="display:none;">$html</div>
 			<!--/noindex-->
 			HTML;
 	}
@@ -202,7 +217,7 @@ class Poll_Renderer {
 			return '';
 		}
 
-		$auto_vote_on_click = ( ! $poll->multiple && $poll->revote && options()->hide_vote_button );
+		$auto_vote_on_click = ( ! $poll->multiple && $poll->revote && $this->options->hide_vote_button );
 		$auto_vote_attr = $auto_vote_on_click ? 'data-is_auto_vote="1"' : '';
 		$body_html = $this->vote_body( $auto_vote_on_click );
 		$bottom_html = $this->vote_bottom( $auto_vote_on_click );
@@ -286,7 +301,7 @@ class Poll_Renderer {
 			</div>
 			HTML,
 			[
-				'{CLASS}' => options()->btn_class,
+				'{CLASS}' => $this->options->btn_class,
 				'{ANCHOR}' => esc_attr_x( 'Already voted...', 'front', 'democracy-poll' ),
 			]
 		);
@@ -297,7 +312,7 @@ class Poll_Renderer {
 			</div>
 			HTML,
 			[
-				'{CLASS}' => options()->btn_class,
+				'{CLASS}' => $this->options->btn_class,
 				'{ANCHOR}' => esc_attr_x( 'Vote', 'front', 'democracy-poll' ),
 				'{ATTRS}' => $auto_vote_on_click ? 'style="display:none;"' : '',
 			]
@@ -324,7 +339,7 @@ class Poll_Renderer {
 				: $vote_btn;
 		}
 
-		if( ! $this->not_show_results && ! options()->dont_show_results_link ){
+		if( ! $this->not_show_results && ! $this->options->dont_show_results_link ){
 			$html .= '<a href="#" class="dem-link dem_link_js dem-results-link" data-dem-act="viewResults" rel="nofollow">' . _x( 'Results', 'front', 'democracy-poll' ) . '</a>';
 		}
 
@@ -419,9 +434,9 @@ class Poll_Renderer {
 			] );
 			$label_perc_txt = "$percent%, $votes_txt";
 
-			$graph_percent = ( ! options()->graph_from_total && $percent ) ? round( $answer->votes / $max_votes * 100 ) : $percent;
+			$graph_percent = ( ! $this->options->graph_from_total && $percent ) ? round( $answer->votes / $max_votes * 100 ) : $percent;
 			$graph_percent = $graph_percent ? "$graph_percent%" : '1px';
-			$width_attr    = options()->line_anim_speed
+			$width_attr    = $this->options->line_anim_speed
 				? 'data-width="' . esc_attr( $graph_percent ) . '"'
 				: 'style="width:' . esc_attr( $graph_percent ) . '"';
 
@@ -479,8 +494,8 @@ class Poll_Renderer {
 		$closed_div   = ! $poll->open
 			? '<div>' . _x( 'Voting is closed', 'front', 'democracy-poll' ) . '</div>'
 			: '';
-		$archive_link = ( ! $this->in_archive && options()->archive_page_id )
-			? '<a class="dem-archive-link dem-link" href="' . get_permalink( options()->archive_page_id ) . '" rel="nofollow">' . esc_html_x( 'Polls Archive', 'front', 'democracy-poll' ) . '</a>'
+		$archive_link = ( ! $this->in_archive && $this->options->archive_page_id )
+			? '<a class="dem-archive-link dem-link" href="' . get_permalink( $this->options->archive_page_id ) . '" rel="nofollow">' . esc_html_x( 'Polls Archive', 'front', 'democracy-poll' ) . '</a>'
 			: '';
 
 		$controls_html = $this->result_screen_controls_html();
@@ -508,7 +523,7 @@ class Poll_Renderer {
 	private function get_result_screen_answers(): array {
 		$answers = $this->poll->answers;
 
-		$order = options()->order_answers_voted ?: 'by_winner';
+		$order = $this->options->order_answers_voted ?: 'by_winner';
 
 		if( $order === 'by_winner' || $order == 1 ){
 			$answers = wp_list_sort( $answers, [ 'votes' => 'desc' ] );
@@ -540,7 +555,7 @@ class Poll_Renderer {
 		if( $poll->open ){
 			// back to voting
 			$vote_btn = sprintf( '<button type="button" class="dem-button dem-vote-link dem_vote_link_js %s" data-dem-act="voteScreen">%s</button>',
-				options()->btn_class,
+				$this->options->btn_class,
 				_x( 'Vote', 'front', 'democracy-poll' )
 			);
 
@@ -577,7 +592,7 @@ class Poll_Renderer {
 			HTML,
 			[
 				'{REVOTE}'    => esc_attr_x( 'Revote', 'front', 'democracy-poll' ),
-				'{BTN_CLASS}' => options()->btn_class,
+				'{BTN_CLASS}' => $this->options->btn_class,
 				'{CONFIRM}'   => esc_attr_x( 'Are you sure you want to cancel the votes?', 'front', 'democracy-poll' ),
 			]
 		);
@@ -629,13 +644,13 @@ class Poll_Renderer {
 	}
 
 	protected function get_loader_html(): string {
-		$loader_fname = options()->loader_fname;
+		$loader_fname = $this->options->loader_fname;
 		if( ! $loader_fname ){
 			return '';
 		}
 
 		return sprintf( '<div class="dem-loader dem_loader_js"><div>%s</div></div>',
-			file_get_contents( plugin()->dir . "/assets/styles/loaders/" . basename( $loader_fname ) )
+			file_get_contents( $this->plugin->dir . "/assets/styles/loaders/" . basename( $loader_fname ) )
 		);
 	}
 

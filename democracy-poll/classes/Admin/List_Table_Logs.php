@@ -2,23 +2,32 @@
 
 namespace DemocracyPoll\Admin;
 
-use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Support\Kses;
+use DemocracyPoll\Support\Messages;
+use DemocracyPoll\Options;
 use DemocracyPoll\Poll_Storage;
 use DemocracyPoll\Poll_Utils;
 use DemocracyPoll\Poll;
-use function DemocracyPoll\plugin;
-use function DemocracyPoll\options;
+use WP_List_Table;
 
-class List_Table_Logs extends \WP_List_Table {
+class List_Table_Logs extends WP_List_Table {
 
 	private static array $cache;
 
 	public int $poll_id;
 
 	private Admin_Page_Logs $logs_page;
+	private Messages $messages;
+	private Options $options;
 
-	public function __construct( Admin_Page_Logs $logs_page ) {
+	public function __construct(
+		Admin_Page_Logs $logs_page,
+		Messages $messages,
+		Options $options
+	) {
 		$this->logs_page = $logs_page;
+		$this->messages = $messages;
+		$this->options = $options;
 
 		parent::__construct( [
 			'singular' => 'demlog',
@@ -50,7 +59,7 @@ class List_Table_Logs extends \WP_List_Table {
 		}
 
 		if( ! $log_ids = array_filter( array_map( 'intval', $_POST['logids'] ) ) ){
-			plugin()->msg->add_error( __( 'Nothing was selected.', 'democracy-poll' ) );
+			$this->messages->add_error( __( 'Nothing was selected.', 'democracy-poll' ) );
 
 			return;
 		}
@@ -169,8 +178,8 @@ class List_Table_Logs extends \WP_List_Table {
 			$this->cache( 'polls', $this->poll_id, $poll );
 		}
 
-		echo strtr( '<h2><small>{title}</small>{question} <small><a href="{url}">{link_text}</a></small></h2>', [
-			'{title}'     => __( 'Poll\'s logs: ', 'democracy-poll' ),
+		echo strtr( '<h2>{title} {question} <a href="{url}" class="button button-small">{link_text}</a></h2>', [
+			'{title}'     => __( 'Poll\'s logs:', 'democracy-poll' ),
 			'{question}'  => Kses::kses_html( $poll->question ),
 			'{url}'       => Poll_Utils::edit_poll_url( $this->poll_id ),
 			'{link_text}' => __( 'Edit poll', 'democracy-poll' ),
@@ -185,7 +194,7 @@ class List_Table_Logs extends \WP_List_Table {
 			$newfilter = ( $_GET['filter'] ?? '' ) === 'new_answers';
 
 			$a = '';
-			if( ! options()->democracy_off ){
+			if( ! $this->options->democracy_off ){
 				$a = strtr( '<a class="button button-small" href="{URL}">{TITLE}</a>', [
 					'{URL}' => esc_url( add_query_arg( [ 'filter' => $newfilter ? null : 'new_answers' ] ) ),
 					'{TITLE}' => ( $newfilter ? ' &#215; ' : '' ) . __( 'NEW answers logs', 'democracy-poll' ),
@@ -225,7 +234,7 @@ class List_Table_Logs extends \WP_List_Table {
 	 */
 	protected function column_cb( $item ): void {
 		$logid = (int) $item->logid;
-		echo '<label><input id="cb-select-' . $logid . '" type="checkbox" name="logids[]" value="' . $logid . '" /></label>';
+		echo '<input id="cb-select-' . $logid . '" type="checkbox" name="logids[]" value="' . $logid . '" />';
 	}
 
 	protected function column_ip_info( $log ) {

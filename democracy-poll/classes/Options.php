@@ -4,9 +4,8 @@ namespace DemocracyPoll;
 
 /**
  * Main:
- * @property-read int    $keep_logs              Eg: 1
- * @property-read string $before_title           Eg: '<strong class="dem-poll-title">'
- * @property-read string $after_title            Eg: '</strong>'
+ * @property-read int    $allow_same_ip_votes    Eg: 0
+ * @property-read string $title_markup           Eg: '<strong class="dem-poll-title">{question}</strong>'
  * @property-read int    $force_cachegear        Eg: 0
  * @property-read int    $archive_page_id        Eg: 0
  * @property-read string $order_answers          Eg: 'by_winner'
@@ -55,10 +54,9 @@ class Options {
 
 	protected array $default_options = [
 		'main'   => [
-			// Store logs in the database.
-			'keep_logs'              => 1,
-			'before_title'           => '<strong class="dem-poll-title">',
-			'after_title'            => '</strong>',
+			// Allow guests with different browser fingerprints to vote from the same IP address.
+			'allow_same_ip_votes'    => 0,
+			'title_markup'           => '<strong class="dem-poll-title">{question}</strong>',
 			'force_cachegear'        => 0,
 			'archive_page_id'        => 0,
 			'order_answers'          => 'by_winner',
@@ -145,6 +143,23 @@ class Options {
 			if( ! $this->opt ){
 				$this->reset_options( 'all' );
 			}
+			else {
+				// backward compatibility: v6.4.1+
+				if( ! isset( $this->opt['title_markup'] ) ){
+					$before_title = $this->opt['before_title'] ?? '<strong class="dem-poll-title">';
+					$after_title  = $this->opt['after_title'] ?? '</strong>';
+					$this->opt['title_markup'] = "$before_title{question}$after_title";
+				}
+
+				// `keep_logs` previously controlled both logging and repeat-vote checks.
+				if( ! isset( $this->opt['allow_same_ip_votes'] ) ){
+					$this->opt['allow_same_ip_votes'] = isset( $this->opt['keep_logs'] )
+						? (int) empty( $this->opt['keep_logs'] )
+						: 0;
+				}
+			}
+
+			unset( $this->opt['before_title'], $this->opt['after_title'], $this->opt['keep_logs'] );
 		}
 
 		// append default values
@@ -174,11 +189,11 @@ class Options {
 	/**
 	 * @param string $type  What group of option to update: main, design.
 	 */
-	public function update_options( string $type ): bool {
+	public function handle_update_options( string $type ): bool {
 		// sanitize on POST request
 		$POSTDATA = wp_unslash( $_POST ); // TODO: move it out of here
 		if( isset( $POSTDATA['dem'] ) && ( $type === 'main' || $type === 'design' ) ){
-			$this->sanitize_request_options( $POSTDATA, $type );
+			$this->sanitize_request_options_and_set_opt( $POSTDATA, $type );
 		}
 
 		// update css styles option
@@ -187,7 +202,7 @@ class Options {
 			$additional_css = $_POST['additional_css'] ?? '';
 			$additional = strip_tags( stripslashes( $additional_css ) );
 
-			( new \DemocracyPoll\Options_CSS() )->regenerate_democracy_css( $additional );
+			container()->get( Options_CSS::class )->regenerate_democracy_css( $additional );
 		}
 
 		return (bool) update_option( self::OPT_NAME, $this->opt );
@@ -208,7 +223,7 @@ class Options {
 			}
 
 			if( $type === 'design' ){
-				( new \DemocracyPoll\Options_CSS() )->regenerate_democracy_css( '' );
+				container()->get( Options_CSS::class )->regenerate_democracy_css( '' );
 			}
 		}
 
@@ -218,23 +233,18 @@ class Options {
 	/**
 	 * Updates {@see self::$opt} based on request data.
 	 * If the option is not passed, 0 will be written in its place.
+	 *
+	 * TODO: refactor
 	 */
-	private function sanitize_request_options( array $request_data, string $type ): void {
-		foreach( $this->default_options[ $type ] as $key => $v ){
-			$value = $request_data['dem'][ $key ] ?? 0; // Use 0/null rather than $v for checkboxes.
+	private function sanitize_request_options_and_set_opt( array $request_data, string $type ): void {
+		foreach( $this->default_options[ $type ] as $key => $foo ){
+			$value = $request_data['dem'][ $key ] ?? 0; // Use 0/null for checkboxes.
 
-			if( in_array( $key, [ 'before_title', 'after_title' ] ) ){
+			if( $key === 'title_markup' ){
 				$value = wp_kses( $value, 'post' );
 			}
 			elseif( $key === 'access_roles' ){
-				// sanitize anyway
-				if( plugin()->super_access ){
-					$value = array_map( 'sanitize_key', (array) $value );
-				}
-				// leave as it is - only admin can change 'access_roles'
-				else{
-					$value = (array) $this->opt[ $key ];
-				}
+				$value = array_map( 'sanitize_key', (array) $value );
 			}
 			else{
 				$value = is_array( $value )

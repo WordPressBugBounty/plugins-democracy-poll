@@ -4,18 +4,21 @@ namespace DemocracyPoll;
 
 class Options_CSS {
 
-	public function __construct(){
+	private Plugin $plugin;
+	private Options $options;
+
+	public function __construct( Plugin $plugin, Options $options ){
+		$this->plugin = $plugin;
+		$this->options = $options;
 	}
 
 	/**
 	 * Regenerates styles in the settings, based on the settings.
 	 * does not touch additional styles.
 	 *
-	 * @param $additional
-	 *
-	 * @return void
+	 * @param string|null $additional
 	 */
-	public function regenerate_democracy_css( $additional = null ) {
+	public function regenerate_democracy_css( $additional = null ): void {
 
 		// so that when the plugin is updated, the additional styles will not be removed.
 		if( $additional === null ){
@@ -41,7 +44,7 @@ class Options_CSS {
 	 * @return string css styles code or empty string if the template is disabled.
 	 */
 	private function collect_base_css(): string {
-		$opt = options();
+		$opt = $this->options;
 		$tpl = $opt->css_file_name;
 
 		// Stop when no template is specified.
@@ -55,7 +58,7 @@ class Options_CSS {
 		$radios = $opt->checkradio_fname;
 
 		$out = '';
-		$styledir = plugin()->dir . '/assets/styles';
+		$styledir = $this->plugin->dir . '/assets/styles';
 
 		$out .= $this->parse_css_import( "$styledir/$tpl" );
 		$out .= $radios ? "\n" . file_get_contents( "$styledir/checkbox-radio/$radios" ) : '';
@@ -110,9 +113,7 @@ class Options_CSS {
 	 * Compresses css using YUICompressor
 	 */
 	public function cssmin( string $input_css ): string {
-		require_once plugin()->dir . '/assets/admin/CssMin/cssmin.php';
-
-		$compressor = new \tubalmartin\CssMin\Minifier();
+		$compressor = new Libs\CssMin\Minifier();
 		// $compressor->set_memory_limit('256M');
 		// $compressor->set_max_execution_time(120);
 

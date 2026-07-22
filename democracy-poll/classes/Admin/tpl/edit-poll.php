@@ -1,11 +1,8 @@
 <?php
 namespace DemocracyPoll\Admin;
 
-use DemocracyPoll\Helpers\Helpers;
+use DemocracyPoll\Support\Helpers;
 use DemocracyPoll\Poll_Answer;
-use DemocracyPoll\Helpers\Kses;
-use function DemocracyPoll\options;
-use function DemocracyPoll\plugin;
 
 /**
  * @var Admin_Page_Edit_Poll $this
@@ -16,17 +13,12 @@ defined( 'ABSPATH' ) || exit;
 $poll = $this->poll; // short
 $edit = (bool) $this->poll_id;
 
-echo $this->admpage->subpages_menu();
-
-
 // METADATA
 if( $this->poll_id ){
 	$items = [];
-	$items['log_link'] = options()->keep_logs
-		? sprintf( '<a href="%s">%s</a>',
-			esc_url( add_query_arg( [ 'subpage' => 'logs', 'poll' => $this->poll->id ], plugin()->admin_page_url ) ),
-			esc_html__( 'Poll logs', 'democracy-poll' ) )
-		: '';
+	$items['log_link'] = sprintf( '<a href="%s">%s</a>',
+		esc_url( add_query_arg( [ 'subpage' => 'logs', 'poll' => $poll->id ], $this->plugin->admin_page_url ) ),
+		esc_html__( 'Poll logs', 'democracy-poll' ) );
 
 	$items['shortcode'] = $this::shortcode_html( $this->poll_id ) . ' — ' . __( 'shortcode for use in post content', 'democracy-poll' );
 
@@ -46,8 +38,6 @@ if( $this->poll_id ){
 	</div>
 
 	<?= apply_filters( 'demadmin_after_question', '', $poll ) ?>
-
-	<?= __( 'Answers:', 'democracy-poll' ) ?>
 
 	<ol class="dem-edit-poll__answers">
 		<?php
@@ -149,7 +139,7 @@ if( $this->poll_id ){
 			</label>
 		</div>
 
-		<?php if( ! options()->democracy_off ){ ?>
+		<?php if( ! $this->options->democracy_off ){ ?>
 			<div class="poll-options__row not__answer">
 				<label>
 					<span class="dashicons dashicons-megaphone"></span>
@@ -160,7 +150,7 @@ if( $this->poll_id ){
 				</label>
 			</div>
 		<?php } ?>
-		<?php if( ! options()->revote_off ){ ?>
+		<?php if( ! $this->options->revote_off ){ ?>
 			<div class="poll-options__row">
 				<label>
 					<span class="dashicons dashicons-update"></span>
@@ -172,7 +162,7 @@ if( $this->poll_id ){
 			</div>
 		<?php } ?>
 
-		<?php if( ! options()->only_for_users ){ ?>
+		<?php if( ! $this->options->only_for_users ){ ?>
 			<div class="poll-options__row">
 				<label>
 					<span class="dashicons dashicons-admin-users"></span>
@@ -183,7 +173,7 @@ if( $this->poll_id ){
 			</div>
 		<?php } ?>
 
-		<?php if( ! options()->dont_show_results ){ ?>
+		<?php if( ! $this->options->dont_show_results ){ ?>
 			<div class="poll-options__row">
 				<label>
 					<span class="dashicons dashicons-visibility"></span>
@@ -212,7 +202,7 @@ if( $this->poll_id ){
 			<select name="dmc_answers_order">
 				<option value="" <?php selected( $poll->answers_order ) ?>>
 					-- <?= esc_html__( 'as in settings', 'democracy-poll' ) ?>:
-					<?= Helpers::allowed_answers_orders()[ options()->order_answers ] ?> --
+					<?= Helpers::allowed_answers_orders()[ $this->options->order_answers ] ?> --
 				</option>
 				<?= Helpers::answers_order_select_options( $poll->answers_order ) ?>
 			</select>
@@ -281,4 +271,3 @@ if( $this->poll_id ){
 	}
 	?>
 </form>
-

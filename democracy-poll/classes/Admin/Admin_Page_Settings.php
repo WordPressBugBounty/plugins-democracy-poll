@@ -2,38 +2,49 @@
 
 namespace DemocracyPoll\Admin;
 
-use function DemocracyPoll\plugin;
-use function DemocracyPoll\options;
+use DemocracyPoll\Support\Messages;
+use DemocracyPoll\Options;
+use DemocracyPoll\Plugin;
 
 class Admin_Page_Settings implements Admin_Subpage_Interface {
 
-	/** @var Admin_Page */
-	private $admpage;
+	private Plugin $plugin;
+	private Admin_Page $admpage;
+	private Messages $messages;
+	private Options $options;
 
-	public function __construct( Admin_Page $admin_page ){
+	public function __construct(
+		Plugin $plugin,
+		Admin_Page $admin_page,
+		Messages $messages,
+		Options $options
+	){
+		$this->plugin = $plugin;
 		$this->admpage = $admin_page;
+		$this->messages = $messages;
+		$this->options = $options;
 	}
 
 	public function load(): void {
 	}
 
 	public function request_handler(): void {
-		if( ! plugin()->super_access || ! Admin_Page::check_nonce() ){
+		if( ! $this->plugin->super_access || ! Admin_Page::check_nonce() ){
 			return;
 		}
 
 		$up = null;
 		if( isset( $_POST['dem_save_main_options'] ) ){
-			$up = options()->update_options( 'main' );
+			$up = $this->options->handle_update_options( 'main' );
 		}
 		if( isset( $_POST['dem_reset_main_options'] ) ){
-			$up = options()->reset_options( 'main' );
+			$up = $this->options->reset_options( 'main' );
 		}
 
 		if( $up !== null ){
 			$up
-				? plugin()->msg->add_ok( __( 'Updated', 'democracy-poll' ) )
-				: plugin()->msg->add_notice( __( 'Nothing was updated', 'democracy-poll' ) );
+				? $this->messages->add_ok( __( 'Updated', 'democracy-poll' ) )
+				: $this->messages->add_notice( __( 'Nothing was updated', 'democracy-poll' ) );
 		}
 
 		// Handle the request to create an archive page.
@@ -45,7 +56,7 @@ class Admin_Page_Settings implements Admin_Subpage_Interface {
 	public function render(): void {
 		echo $this->admpage->subpages_menu();
 
-		if( ! plugin()->super_access ){
+		if( ! $this->plugin->super_access ){
 			return;
 		}
 
@@ -86,7 +97,7 @@ class Admin_Page_Settings implements Admin_Subpage_Interface {
 		}
 
 		// update option
-		options()->update_single_option( 'archive_page_id', $page_id );
+		$this->options->update_single_option( 'archive_page_id', $page_id );
 
 		wp_redirect( remove_query_arg( 'dem_create_archive_page' ) );
 	}

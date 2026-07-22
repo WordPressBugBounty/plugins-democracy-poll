@@ -2,27 +2,35 @@
 
 namespace DemocracyPoll\Admin;
 
-use DemocracyPoll\Helpers\IP;
+use DemocracyPoll\Support\IP;
+use DemocracyPoll\Support\Messages;
+use DemocracyPoll\Options;
 use DemocracyPoll\Poll_Utils;
-use function DemocracyPoll\plugin;
-use function DemocracyPoll\options;
+use DemocracyPoll\Plugin;
+use function DemocracyPoll\container;
 
 class Admin_Page_Logs implements Admin_Subpage_Interface {
 
 	private const IP_INFO_AJAX_ACTION = 'democracy_ip_info';
 
 	private Admin_Page $admpage;
+	private Messages $messages;
+	private Plugin $plugin;
+	private Options $options;
 
 	public List_Table_Logs $list_table;
 
 	private static ?string $flag_css = null;
 
-	public function __construct( Admin_Page $admin_page ){
+	public function __construct( Admin_Page $admin_page, Messages $messages, Plugin $plugin, Options $options ){
 		$this->admpage = $admin_page;
+		$this->messages = $messages;
+		$this->plugin = $plugin;
+		$this->options = $options;
 	}
 
 	public function request_handler(): void {
-		if( ! plugin()->super_access || ! Admin_Page::check_nonce() ){
+		if( ! $this->plugin->super_access || ! Admin_Page::check_nonce() ){
 			return;
 		}
 
@@ -42,7 +50,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 	}
 
 	public function load(): void {
-		$this->list_table = new List_Table_Logs( $this );
+		$this->list_table = new List_Table_Logs( $this, $this->messages, $this->options );
 
 		wp_add_inline_script( Admin_Page::ASSETS_ID, 'window.democracyPollLogs = ' . wp_json_encode( [
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
@@ -52,7 +60,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 	}
 
 	public static function ip_info_ajax_handler(): void {
-		if( ! plugin()->admin_access || ! check_ajax_referer( self::IP_INFO_AJAX_ACTION, 'nonce', false ) ){
+		if( ! container()->get( Plugin::class )->admin_access || ! check_ajax_referer( self::IP_INFO_AJAX_ACTION, 'nonce', false ) ){
 			wp_send_json_error( null, 403 );
 		}
 
@@ -93,6 +101,8 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 	}
 
 	public static function ip_info_html( string $ip_info ): string {
+		$plugin = container()->get( Plugin::class );
+
 		$country_img  = '';
 		$country_name = '';
 		$city         = '';
@@ -101,7 +111,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 			[ $country_name, $country_code, $city ] = explode( ',', $ip_info ) + [ '', '', '' ];
 
 			if( null === self::$flag_css ){
-				self::$flag_css = (string) file_get_contents( plugin()->dir . '/assets/admin/country_flags/flags.css' );
+				self::$flag_css = (string) file_get_contents( "$plugin->dir/assets/admin/country_flags/flags.css" );
 			}
 
 			preg_match( '~flag-' . strtolower( $country_code ) . ' \{([^}]+)\}~', self::$flag_css, $matches );
@@ -109,7 +119,14 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 
 			if( $bg_pos ){
 				$location = $country_name . ( $city ? ", $city" : '' );
-				$country_img = '<span title="' . esc_attr( $location ) . '" style="cursor:help; display:inline-block; width:16px; height:11px; background:url(' . plugin()->url . '/assets/admin/country_flags/flags.png) no-repeat; ' . $bg_pos . '"></span> ';
+				$country_img = strtr(
+					'<span title="{TITLE}" style="cursor:help; display:inline-block; width:16px; height:11px; background:url({FLAGS_URL}) no-repeat; {BG_POS}"></span>',
+					[
+						'{title}'     => esc_attr( $location ),
+						'{FLAGS_URL}' => esc_url( "$plugin->url/assets/admin/country_flags/flags.png" ),
+						'{BG_POS}'    => $bg_pos,
+					]
+				);
 			}
 		}
 
@@ -124,14 +141,10 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 	public function render(): void {
 		// no access
 		if( $this->list_table->poll_id && ! Poll_Utils::cuser_can_edit_poll( $this->list_table->poll_id ) ){
-			plugin()->msg->add_error( 'Sorry, you are not allowed to access this page.' );
+			$this->messages->add_error( 'Sorry, you are not allowed to access this page.' );
 			echo $this->admpage->subpages_menu();
 
 			return;
-		}
-
-		if( ! options()->keep_logs ){
-			plugin()->msg->add_warn( __( 'Logs records turned off in the settings - logs are not recorded.', 'democracy-poll' ) );
 		}
 
 		echo $this->admpage->subpages_menu();
@@ -149,7 +162,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 	private function render_logs_buttons(): void {
 		global $wpdb;
 
-		if( ! plugin()->super_access ){
+		if( ! $this->plugin->super_access ){
 			return;
 		}
 
@@ -157,7 +170,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 			"SELECT count(*) FROM $wpdb->democracy_log WHERE qid IN (SELECT id FROM $wpdb->democracy_q WHERE open = 0)"
 		);
 
-		$del_new_marks_button = options()->democracy_off
+		$del_new_marks_button = $this->options->democracy_off
 			? ''
 			: sprintf( '<a class="button button-small" href="%s">%s</a>',
 				esc_url( Admin_Page::add_nonce( $_SERVER['REQUEST_URI'] . '&dem_del_new_mark' ) ),
@@ -200,13 +213,13 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 		$logid_IN = implode( ',', array_map( 'intval', $log_ids ) );
 		$result = $wpdb->query( "DELETE FROM $wpdb->democracy_log WHERE logid IN ($logid_IN)" );
 
-		plugin()->msg->add_ok( $result
+		$this->messages->add_ok( $result
 			? sprintf( __( 'Lines deleted: %s', 'democracy-poll' ), $result )
 			: __( 'Failed to delete', 'democracy-poll' )
 		);
 
 		/**
-		 * Allows to do something after deleting logs.
+		 * Allows doing something after deleting logs.
 		 *
 		 * @param array|int $log_ids  Log IDs array or single log ID
 		 * @param int       $result   Result of the delete query, number of deleted rows
@@ -242,7 +255,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 		// now, delete logs itself
 		$result = $wpdb->query( "DELETE FROM $wpdb->democracy_log WHERE logid IN (" . implode( ',', array_map( 'intval', $log_ids ) ) . ")" );
 
-		plugin()->msg->add_ok( $result
+		$this->messages->add_ok( $result
 			? sprintf(
 				__( 'Removed logs: %d. Removed answers:%d. Removed users %d.', 'democracy-poll' ),
 				$result, $minus_answ_sum, $minus_users_sum
@@ -251,7 +264,7 @@ class Admin_Page_Logs implements Admin_Subpage_Interface {
 		);
 
 		/**
-		 * Allows to do something after deleting logs and votes.
+		 * Allows doing something after deleting logs and votes.
 		 *
 		 * @param array|int $log_ids  Log IDs array or single log ID.
 		 * @param int       $result   Result of the delete query, number of deleted rows.

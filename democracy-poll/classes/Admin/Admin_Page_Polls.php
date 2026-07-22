@@ -2,24 +2,31 @@
 
 namespace DemocracyPoll\Admin;
 
-use function DemocracyPoll\plugin;
+use DemocracyPoll\Plugin;
+use function DemocracyPoll\container;
 
 class Admin_Page_Polls implements Admin_Subpage_Interface {
 
-	public List_Table_Polls $list_table;
-
+	private Plugin $plugin;
 	private Admin_Page $admpage;
+	private List_Table_Polls $list_table;
 
-	public function __construct( Admin_Page $admin_page ){
+	public function __construct(
+		Plugin $plugin,
+		Admin_Page $admin_page,
+		List_Table_Polls $list_table /** @see List_Table_Polls::__construct() */
+	){
+		$this->plugin = $plugin;
 		$this->admpage = $admin_page;
+		$this->list_table = $list_table;
 	}
 
 	public function load(): void {
-		$this->list_table = new List_Table_Polls( $this );
+		$this->list_table->load();
 	}
 
 	public function request_handler(): void {
-		if( ! plugin()->admin_access ){
+		if( ! $this->plugin->admin_access ){
 			return;
 		}
 	}

@@ -19,3 +19,5 @@ spl_autoload_register( static function( $class ) {
 
 // For backward compatibility. !After spl_autoload_register()
 class_alias( Poll::class, \DemPoll::class );
+class_alias( Support\Helpers::class, Helpers\Helpers::class );
+class_alias( Support\Kses::class, Helpers\Kses::class );

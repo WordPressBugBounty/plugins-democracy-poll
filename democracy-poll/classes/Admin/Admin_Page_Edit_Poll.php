@@ -2,11 +2,14 @@
 
 namespace DemocracyPoll\Admin;
 
-use DemocracyPoll\Helpers\Kses;
+use DemocracyPoll\Support\Kses;
+use DemocracyPoll\Support\Messages;
+use DemocracyPoll\Options;
 use DemocracyPoll\Poll;
 use DemocracyPoll\Poll_Storage;
 use DemocracyPoll\Poll_Utils;
-use function DemocracyPoll\plugin;
+use DemocracyPoll\Plugin;
+use function DemocracyPoll\container;
 
 class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 
@@ -15,13 +18,24 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	private ?Poll $poll = null;
 
 	private Admin_Page $admpage;
+	private Messages $messages;
+	private Plugin $plugin;
+	private Options $options;
+
+	public function __construct(
+		Admin_Page $admin_page,
+		Messages $messages,
+		Plugin $plugin,
+		Options $options
+	) {
+		$this->admpage = $admin_page;
+		$this->messages = $messages;
+		$this->plugin = $plugin;
+		$this->options = $options;
+	}
 
 	public function set_poll_id( int $poll_id ): void {
 		$this->poll_id = $poll_id;
-	}
-
-	public function __construct( Admin_Page $admin_page ) {
-		$this->admpage = $admin_page;
 	}
 
 	public function load(): void {
@@ -30,7 +44,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 
 	public function request_handler(): void {
 		if( ( $_GET['msg'] ?? '' ) === 'created' ){
-			plugin()->msg->add_ok( __( 'New Poll Added', 'democracy-poll' ) );
+			$this->messages->add_ok( __( 'New Poll Added', 'democracy-poll' ) );
 		}
 
 		if( ! Admin_Page::check_nonce() ){
@@ -43,20 +57,20 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 
 		if( $is_update ){
 			if( ! $poll_id ){
-				plugin()->msg->add_error( 'Poll ID to be edited not set' );
+				$this->messages->add_error( 'Poll ID to be edited not set' );
 				return;
 			}
 
 			if( ! Poll_Utils::cuser_can_edit_poll( $poll_id ) ){
-				plugin()->msg->add_error( 'Low cap to update poll' );
+				$this->messages->add_error( 'Low cap to update poll' );
 				return;
 			}
 
 			$this->insert_poll_handler( $poll_id );
 		}
 		elseif( $is_create ){
-			if( ! plugin()->admin_access ){
-				plugin()->msg->add_error( 'Low cap to create poll' );
+			if( ! $this->plugin->admin_access ){
+				$this->messages->add_error( 'Low cap to create poll' );
 				return;
 			}
 
@@ -72,6 +86,8 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		}
 
 		$this->poll = new Poll( $this->poll_id );
+
+		echo $this->admpage->subpages_menu();
 
 		require __DIR__ . '/tpl/edit-poll.php';
 	}
@@ -118,37 +134,35 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	 *
 	 * @return bool True when added updated, False otherwise.
 	 */
-	public function insert_poll( array $data ): bool {
+	public function insert_poll( array $insert_data ): bool {
 		global $wpdb;
 
-		$orig_data = $data;
-
-		$poll_id = (int) ( $data['qid'] ?? 0 );
+		$poll_id = (int) ( $insert_data['qid'] ?? 0 );
 		$update = (bool) $poll_id;
 
 		// sanitize
-		$data = (object) $this->sanitize_poll_data( $data );
+		$data = $this->sanitize_poll_data( $insert_data );
 
-		if( ! $data->question ){
-			plugin()->msg->add_warn( 'error: question not set' );
+		if( ! $data['question'] ){
+			$this->messages->add_warn( 'error: question not set' );
 
 			return false;
 		}
 
 		/// answers
-		$old_answers = (array) ( $data->old_answers ?? [] );
-		$new_answers = array_filter( (array) ( $data->new_answers ?? [] ) );
+		$old_answers = (array) ( $data['old_answers'] ?? [] );
+		$new_answers = array_filter( (array) ( $data['new_answers'] ?? [] ) );
 
 		// add data if insert new poll
 		if( ! $update ){
-			$data->added = current_time( 'timestamp' );
-			$data->added_user = get_current_user_id();
-			$data->open = 1; // poll is open by default
+			$data['added'] = current_time( 'timestamp' );
+			$data['added_user'] = get_current_user_id();
+			$data['open'] = 1; // poll is open by default
 		}
 
 		// Remove invalid for the table fields
 		$q_fields = wp_list_pluck( $wpdb->get_results( "SHOW COLUMNS FROM $wpdb->democracy_q" ), 'Field' );
-		$q_data = array_intersect_key( (array) $data, array_flip( $q_fields ) );
+		$q_data = array_intersect_key( $data, array_flip( $q_fields ) );
 
 		/**
 		 * Allows to modify the poll data before insert or update.
@@ -255,18 +269,18 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 				}
 			}
 
-			plugin()->msg->add_ok( __( 'Poll Updated', 'democracy-poll' ) );
+			$this->messages->add_ok( __( 'Poll Updated', 'democracy-poll' ) );
 
 			// collect answers users votes count
 			// Update questions.users_voted after the logs because its value depends on them.
 			if( 1 ){ // @phpstan-ignore-line
 				$users_voted = 0;
 				// Calculate the value from the logs.
-				if( $data->multiple && ! $data->users_voted ){
+				if( $data['multiple'] && ! $data['users_voted'] ){
 					$users_voted = $wpdb->get_var( "SELECT count(*) FROM $wpdb->democracy_log WHERE qid = " . (int) $poll_id );
 				}
 				// Equal to the number of votes.
-				if( ! $data->multiple ){
+				if( ! $data['multiple'] ){
 					$users_voted = $wpdb->get_var( "SELECT SUM(votes) FROM $wpdb->democracy_a WHERE qid = " . (int) $poll_id );
 				}
 				//$users_voted = array_sum( wp_list_pluck($old_answers, 'votes') );
@@ -281,7 +295,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 			$wpdb->insert( $wpdb->democracy_q, $q_data );
 
 			if( ! $poll_id = $wpdb->insert_id ){
-				plugin()->msg->add_error( 'error: sql error when adding poll data' );
+				$this->messages->add_error( 'error: sql error when adding poll data' );
 
 				return false;
 			}
@@ -311,7 +325,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	/**
 	 * Sanitize all poll fields before save in db.
 	 */
-	public function sanitize_poll_data( $data ) {
+	public function sanitize_poll_data( array $data ): array {
 		$original_data = $data;
 
 		foreach( $data as $key => & $val ){
@@ -365,7 +379,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		 * @param array $data          The sanitized poll data.
 		 * @param array $original_data The original data before sanitization.
 		 */
-		return apply_filters( 'demadmin_sanitize_poll_data', $data, $original_data );
+		return (array) apply_filters( 'demadmin_sanitize_poll_data', $data, $original_data );
 	}
 
 	public static function shortcode_html( $poll_id ): string {
@@ -422,7 +436,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 	public static function delete_button( $poll ): string {
 		return sprintf(
 			' <a href="%s" class="button" onclick="return confirm(\'%s\');" title="%s"><span class="dashicons dashicons-trash"></span></a>',
-			Admin_Page::add_nonce( add_query_arg( [ 'delete_poll' => $poll->id ], plugin()->admin_page_url ) ),
+			Admin_Page::add_nonce( add_query_arg( [ 'delete_poll' => $poll->id ], container()->get( Plugin::class )->admin_page_url ) ),
 			__( 'Are you sure?', 'democracy-poll' ),
 			__( 'Delete', 'democracy-poll' )
 		);
@@ -440,7 +454,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		$wpdb->delete( $wpdb->democracy_a, [ 'qid' => $poll_id ] );
 		$wpdb->delete( $wpdb->democracy_log, [ 'qid' => $poll_id ] );
 
-		plugin()->msg->add_ok( __( 'Poll Deleted', 'democracy-poll' ) . ": $poll_id" );
+		container()->get( Messages::class )->add_ok( __( 'Poll Deleted', 'democracy-poll' ) . ": $poll_id" );
 	}
 
 	public static function open_poll( int $poll_id ): bool {
@@ -488,7 +502,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		$done = $wpdb->update( $wpdb->democracy_q, $new_data, [ 'id' => $poll->id ] );
 
 		if( $done ){
-			plugin()->msg->add_ok( ( $action === 'open' )
+			container()->get( Messages::class )->add_ok( ( $action === 'open' )
 				? __( 'Poll Opened', 'democracy-poll' )
 				: __( 'Poll Closed', 'democracy-poll' )
 			);
@@ -514,7 +528,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		$activate = ( $action === 'activate' );
 
 		if( ! $poll->open && $activate ){
-			plugin()->msg->add_error( __( 'You can not activate closed poll...', 'democracy-poll' ) );
+			container()->get( Messages::class )->add_error( __( 'You can not activate closed poll...', 'democracy-poll' ) );
 
 			return false;
 		}
@@ -522,7 +536,7 @@ class Admin_Page_Edit_Poll implements Admin_Subpage_Interface {
 		$done = $wpdb->update( $wpdb->democracy_q, [ 'active' => $activate ? 1 : 0 ], [ 'id' => $poll->id ] );
 
 		if( $done ){
-			plugin()->msg->add_ok( $activate
+			container()->get( Messages::class )->add_ok( $activate
 				? __( 'Poll Activated', 'democracy-poll' )
 				: __( 'Poll Deactivated', 'democracy-poll' )
 			);
